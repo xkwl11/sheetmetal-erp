@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}附件管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-paperclip me-2"></i>附件管理</h2>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">按订单筛选</label>
+                <select class="form-select" id="orderFilter">
+                    <option value="">全部订单</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">搜索文件名</label>
+                <input type="text" class="form-control" id="searchInput" placeholder="输入文件名...">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button class="btn btn-primary me-2" onclick="loadAttachments()"><i class="bi bi-search me-1"></i>搜索</button>
+                <button class="btn btn-outline-secondary" onclick="resetFilter()"><i class="bi bi-arrow-counterclockwise me-1"></i>重置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 附件列表 -->
+<div class="card">
+    <div class="card-header bg-white d-flex justify-content-between">
+        <span><i class="bi bi-list-ul me-2"></i>附件列表</span>
+        <span class="badge bg-secondary" id="attachmentCount">0</span>
+    </div>
+    <div class="card-body">
+        <div id="attachmentList">
+            <div class="text-muted text-center py-3">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const icons = {
+        'pdf': 'bi-filetype-pdf',
+        'doc': 'bi-filetype-doc', 'docx': 'bi-filetype-docx',
+        'xls': 'bi-filetype-xls', 'xlsx': 'bi-filetype-xlsx',
+        'jpg': 'bi-filetype-jpg', 'jpeg': 'bi-filetype-jpg',
+        'png': 'bi-filetype-png', 'gif': 'bi-filetype-gif',
+        'dwg': 'bi-filetype-dwg', 'dxf': 'bi-filetype-dxf',
+        'zip': 'bi-filetype-zip', 'rar': 'bi-filetype-rar',
+        'txt': 'bi-filetype-txt'
+    };
+    return icons[ext] || 'bi-file-earmark';
+}
+
+function loadAttachments() {
+    const orderId = document.getElementById('orderFilter').value;
+    const keyword = document.getElementById('searchInput').value.trim();
+    let url = '/api/attachments?';
+    if (orderId) url += `order_id=${orderId}&`;
+    if (keyword) url += `keyword=${encodeURIComponent(keyword)}&`;
+    
+    fetch(url)
+        .then(res => {
+            if (!res.ok) throw new Error('网络请求失败: ' + res.status);
+            return res.json();
+        })
+        .then(data => {
+            const container = document.getElementById('attachmentList');
+            document.getElementById('attachmentCount').textContent = data.length;
+            if (data.length === 0) {
+                container.innerHTML = '<div class="text-muted text-center py-3">暂无附件</div>';
+                return;
+            }
+            let html = '<div class="list-group">';
+            data.forEach(att => {
+                const size = (att.filesize / 1024).toFixed(1) + ' KB';
+                const icon = getFileIcon(att.filename);
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi ${icon} me-2" style="font-size:20px;"></i>
+                            <span>${att.filename}</span>
+                            <span class="badge bg-secondary ms-2">${size}</span>
+                            <a href="/orders/${att.order_id}" class="ms-2 text-decoration-none">
+                                <span class="badge bg-info">订单 ${att.order_no || '未知'}</span>
+                            </a>
+                            <span class="text-muted ms-2 small">${att.uploaded_at}</span>
+                        </div>
+                        <div>
+                            <a href="/api/attachments/${att.id}/download" class="btn btn-sm btn-outline-primary me-1" target="_blank"><i class="bi bi-download"></i></a>
+                            <button class="btn btn-sm btn-outline-danger delete-attachment" data-id="${att.id}"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+            
+            container.querySelectorAll('.delete-attachment').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    if (!confirm('确定要删除此附件吗？')) return;
+                    fetch(`/api/attachments/${id}`, { method: 'DELETE' })
+                        .then(res => res.json())
+                        .then(() => loadAttachments())
+                        .catch(err => alert('删除失败: ' + err.message));
+                });
+            });
+        })
+        .catch(err => {
+            console.error('加载附件失败:', err);
+            document.getElementById('attachmentList').innerHTML = `<div class="text-danger text-center py-3">加载失败: ${err.message}</div>`;
+        });
+}
+
+function loadOrderFilter() {
+    fetch('/api/attachments/orders')
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('orderFilter');
+            select.innerHTML = '<option value="">全部订单</option>' + 
+                data.map(o => `<option value="${o.id}">${o.order_no} - ${o.customer_name || '无客户'}</option>`).join('');
+        })
+        .catch(err => console.error('加载订单列表失败:', err));
+}
+
+function resetFilter() {
+    document.getElementById('orderFilter').value = '';
+    document.getElementById('searchInput').value = '';
+    loadAttachments();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadOrderFilter();
+    loadAttachments();
+});
+</script>
+{% endblock %}

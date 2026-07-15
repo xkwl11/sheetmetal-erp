@@ -1,0 +1,840 @@
+{% extends "base.html" %}
+
+{% block title %}库存管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    .material-info { 
+        background: #f8f9fa; 
+        padding: 10px 15px; 
+        border-radius: 8px; 
+        border-left: 4px solid #0d6efd; 
+    }
+    .material-info .label { font-weight: 600; color: #495057; }
+    .material-info .value { color: #0d6efd; font-weight: 500; }
+
+    .search-select-wrapper {
+        position: relative;
+    }
+    .search-select-wrapper .search-input {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    .search-select-wrapper .search-input:focus {
+        outline: none;
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    .search-select-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        max-height: 250px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        display: none;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        margin-top: 2px;
+    }
+    .search-select-dropdown .option-item {
+        padding: 6px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f1f1;
+        font-size: 13px;
+    }
+    .search-select-dropdown .option-item:hover {
+        background-color: #e9ecef;
+    }
+    .search-select-dropdown .option-item.selected {
+        background-color: #0d6efd;
+        color: #fff;
+    }
+    .search-select-dropdown .no-result {
+        padding: 10px 12px;
+        color: #6c757d;
+        font-style: italic;
+    }
+    .selected-display {
+        margin-top: 6px;
+        padding: 4px 10px;
+        background: #e9ecef;
+        border-radius: 4px;
+        font-size: 13px;
+        color: #495057;
+        display: none;
+    }
+    .selected-display strong {
+        color: #0d6efd;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-box-seam me-2"></i>库存管理</h2>
+    <span class="text-muted">单位：毫米 (mm)</span>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- 整板入库 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between">
+                <span><i class="bi bi-stack me-2"></i>整板入库/修改</span>
+                <span><span class="badge bg-secondary" id="modeLabel">入库模式</span></span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">从已有加载：</label>
+                    <div class="search-select-wrapper" id="standardSelectWrapper">
+                        <input type="text" class="search-input" id="standardSearchInput" placeholder="搜索已有整板规格..." autocomplete="off">
+                        <div class="search-select-dropdown" id="standardDropdown"><div class="no-result">加载中...</div></div>
+                        <div class="selected-display" id="standardSelectedDisplay">
+                            已选：<strong id="standardSelectedName">-</strong>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="clearStandardSelection">清除</button>
+                        </div>
+                    </div>
+                </div>
+                <form id="standardForm" class="row g-3">
+                    <input type="hidden" id="standardMode" value="add">
+                    <div class="col-md-4">
+                        <label>长度 (mm)</label>
+                        <input type="number" step="1" class="form-control" id="standardLength" placeholder="如 2438" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label>宽度 (mm)</label>
+                        <input type="number" step="1" class="form-control" id="standardWidth" placeholder="如 1218" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label>厚度 (mm)</label>
+                        <input type="number" step="0.01" class="form-control" id="standardThickness" placeholder="如 0.5" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label>数量 (张)</label>
+                        <input type="number" class="form-control" id="standardQty" value="1" min="0" required>
+                        <small class="text-muted">输入0可清空该规格</small>
+                    </div>
+                    <div class="col-md-8">
+                        <label>材料名称</label>
+                        <input type="text" class="form-control" id="standardColor" placeholder="如 不锈钢砂面板" required>
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="standardSubmitBtn"><i class="bi bi-plus-circle me-1"></i>增加库存</button>
+                        <button type="button" class="btn btn-warning" id="standardUpdateBtn" style="display:none;"><i class="bi bi-pencil me-1"></i>更新数量</button>
+                        <button type="button" class="btn btn-outline-secondary" id="standardCancelBtn" style="display:none;"><i class="bi bi-x me-1"></i>取消</button>
+                    </div>
+                </form>
+                <div class="mt-2 text-muted small"><span id="modeHint">当前模式：增加库存</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 余料入库 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between">
+                <span><i class="bi bi-puzzle me-2"></i>余料入库/修改</span>
+                <span><span class="badge bg-secondary" id="leftoverModeLabel">入库模式</span></span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">从已有加载：</label>
+                    <div class="search-select-wrapper" id="leftoverSelectWrapper">
+                        <input type="text" class="search-input" id="leftoverSearchInput" placeholder="搜索已有余料规格..." autocomplete="off">
+                        <div class="search-select-dropdown" id="leftoverDropdown"><div class="no-result">加载中...</div></div>
+                        <div class="selected-display" id="leftoverSelectedDisplay">
+                            已选：<strong id="leftoverSelectedName">-</strong>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="clearLeftoverSelection">清除</button>
+                        </div>
+                    </div>
+                </div>
+                <form id="leftoverForm" class="row g-3">
+                    <input type="hidden" id="leftoverMode" value="add">
+                    <div class="col-md-4">
+                        <label>长度 (mm)</label>
+                        <input type="number" step="1" class="form-control" id="leftoverLength" placeholder="如 1800" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label>宽度 (mm)</label>
+                        <input type="number" step="1" class="form-control" id="leftoverWidth" placeholder="如 1220" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label>厚度 (mm)</label>
+                        <input type="number" step="0.01" class="form-control" id="leftoverThickness" placeholder="如 0.5" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label>数量 (块)</label>
+                        <input type="number" class="form-control" id="leftoverQty" value="1" min="0" required>
+                        <small class="text-muted">输入0可清空该规格</small>
+                    </div>
+                    <div class="col-md-8">
+                        <label>材料名称</label>
+                        <input type="text" class="form-control" id="leftoverColor" placeholder="如 不锈钢砂面板" required>
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-success" id="leftoverSubmitBtn"><i class="bi bi-plus-circle me-1"></i>增加余料</button>
+                        <button type="button" class="btn btn-warning" id="leftoverUpdateBtn" style="display:none;"><i class="bi bi-pencil me-1"></i>更新数量</button>
+                        <button type="button" class="btn btn-outline-secondary" id="leftoverCancelBtn" style="display:none;"><i class="bi bi-x me-1"></i>取消</button>
+                    </div>
+                </form>
+                <div class="mt-2 text-muted small"><span id="leftoverModeHint">当前模式：增加余料</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 现有库存 -->
+<div class="row g-4">
+    <!-- 整板库存 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between">
+                <span><i class="bi bi-stack me-2"></i>整板库存</span>
+                <span class="badge bg-secondary">{{ standard|length }}</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead><tr><th>长度</th><th>宽度</th><th>厚度</th><th>数量</th><th>材料</th><th>操作</th></tr></thead>
+                        <tbody>
+                            {% for item in standard %}
+                            <tr>
+                                <td>{{ item.length }}</td>
+                                <td>{{ item.width }}</td>
+                                <td>{{ item.thickness }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.color }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary edit-standard" 
+                                            data-length="{{ item.length }}"
+                                            data-width="{{ item.width }}"
+                                            data-thickness="{{ item.thickness }}"
+                                            data-quantity="{{ item.quantity }}"
+                                            data-color="{{ item.color }}">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger delete-standard" 
+                                            data-length="{{ item.length }}"
+                                            data-width="{{ item.width }}"
+                                            data-thickness="{{ item.thickness }}"
+                                            data-color="{{ item.color }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 余料库存 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between">
+                <span><i class="bi bi-puzzle me-2"></i>余料库存</span>
+                <span class="badge bg-secondary">{{ leftovers|length }}</span>
+            </div>
+            <div class="card-body" style="max-height:400px; overflow-y:auto;">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead><tr><th>长度</th><th>宽度</th><th>厚度</th><th>数量</th><th>材料</th><th>状态</th><th>操作</th></tr></thead>
+                        <tbody>
+                            {% for item in leftovers %}
+                            <tr>
+                                <td>{{ item.length }}</td>
+                                <td>{{ item.width }}</td>
+                                <td>{{ item.thickness }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.color }}</td>
+                                <td>
+                                    <span class="badge {% if item.status == 'available' %}bg-success{% else %}bg-secondary{% endif %}">
+                                        {{ item.status }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary edit-leftover" 
+                                            data-length="{{ item.length }}"
+                                            data-width="{{ item.width }}"
+                                            data-thickness="{{ item.thickness }}"
+                                            data-quantity="{{ item.quantity }}"
+                                            data-color="{{ item.color }}">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger delete-leftover" 
+                                            data-length="{{ item.length }}"
+                                            data-width="{{ item.width }}"
+                                            data-thickness="{{ item.thickness }}"
+                                            data-color="{{ item.color }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+// 整板搜索（同上，保持原有逻辑）
+// ============================================================
+(function() {
+    const searchInput = document.getElementById('standardSearchInput');
+    const dropdown = document.getElementById('standardDropdown');
+    const selectedDisplay = document.getElementById('standardSelectedDisplay');
+    const selectedName = document.getElementById('standardSelectedName');
+    const clearBtn = document.getElementById('clearStandardSelection');
+    let allStandards = [];
+    let selectedStandard = null;
+    let isDropdownOpen = false;
+
+    function loadStandards(keyword = '') {
+        fetch('/api/v1/inventory/standards/list')
+            .then(res => res.json())
+            .then(data => {
+                allStandards = data.data || [];
+                if (keyword) {
+                    const filtered = allStandards.filter(s => 
+                        (s.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                        String(s.length).includes(keyword) ||
+                        String(s.width).includes(keyword) ||
+                        String(s.thickness).includes(keyword)
+                    );
+                    renderDropdown(filtered);
+                } else {
+                    renderDropdown(allStandards);
+                }
+                if (allStandards.length === 0) dropdown.innerHTML = '<div class="no-result">暂无整板库存</div>';
+            })
+            .catch(err => { dropdown.innerHTML = '<div class="no-result">加载失败</div>'; });
+    }
+
+    function renderDropdown(items) {
+        if (!items || items.length === 0) {
+            dropdown.innerHTML = '<div class="no-result">未找到匹配的规格</div>';
+            return;
+        }
+        let html = '';
+        items.forEach(item => {
+            const isSelected = selectedStandard && 
+                selectedStandard.length === item.length &&
+                selectedStandard.width === item.width &&
+                selectedStandard.thickness === item.thickness &&
+                selectedStandard.color === item.color;
+            html += `<div class="option-item ${isSelected ? 'selected' : ''}" 
+                        data-length="${item.length}"
+                        data-width="${item.width}"
+                        data-thickness="${item.thickness}"
+                        data-quantity="${item.quantity}"
+                        data-color="${item.color}">
+                <strong>${item.color || '未命名'}</strong>
+                <span style="color:#6c757d;font-size:12px;margin-left:8px;">
+                    ${item.length}×${item.width}×${item.thickness}mm 
+                    (库存: ${item.quantity}张)
+                </span>
+            </div>`;
+        });
+        dropdown.innerHTML = html;
+        dropdown.querySelectorAll('.option-item').forEach(el => {
+            el.addEventListener('click', function() {
+                const data = {
+                    length: parseInt(this.dataset.length),
+                    width: parseInt(this.dataset.width),
+                    thickness: parseFloat(this.dataset.thickness),
+                    quantity: parseInt(this.dataset.quantity),
+                    color: this.dataset.color
+                };
+                selectStandard(data);
+                closeDropdown();
+            });
+        });
+    }
+
+    function selectStandard(data) {
+        selectedStandard = data;
+        document.getElementById('standardLength').value = data.length;
+        document.getElementById('standardWidth').value = data.width;
+        document.getElementById('standardThickness').value = data.thickness;
+        document.getElementById('standardColor').value = data.color;
+        document.getElementById('standardQty').value = data.quantity;
+        setUpdateMode(data.length, data.width, data.thickness, data.quantity, data.color);
+        selectedName.textContent = `${data.color} ${data.length}×${data.width}×${data.thickness}mm (库存:${data.quantity}张)`;
+        selectedDisplay.style.display = 'block';
+        searchInput.value = '';
+        renderDropdown(allStandards);
+    }
+
+    function openDropdown() {
+        if (isDropdownOpen) return;
+        isDropdownOpen = true;
+        dropdown.style.display = 'block';
+        const keyword = searchInput.value.trim();
+        if (keyword === '') renderDropdown(allStandards);
+        else {
+            const filtered = allStandards.filter(s => 
+                (s.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                String(s.length).includes(keyword) ||
+                String(s.width).includes(keyword) ||
+                String(s.thickness).includes(keyword)
+            );
+            renderDropdown(filtered);
+        }
+    }
+    function closeDropdown() { isDropdownOpen = false; dropdown.style.display = 'none'; }
+
+    searchInput.addEventListener('input', function() {
+        const keyword = this.value.trim();
+        if (keyword === '') renderDropdown(allStandards);
+        else {
+            const filtered = allStandards.filter(s => 
+                (s.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                String(s.length).includes(keyword) ||
+                String(s.width).includes(keyword) ||
+                String(s.thickness).includes(keyword)
+            );
+            renderDropdown(filtered);
+        }
+        openDropdown();
+    });
+    searchInput.addEventListener('click', function(e) { e.stopPropagation(); if (allStandards.length === 0) loadStandards(); else openDropdown(); });
+    document.addEventListener('click', function(e) { if (!document.getElementById('standardSelectWrapper').contains(e.target)) closeDropdown(); });
+    searchInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.option-item');
+        if (items.length === 0) return;
+        let currentIndex = -1;
+        items.forEach((el, idx) => { if (el.classList.contains('selected')) currentIndex = idx; });
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIdx = (currentIndex + 1) % items.length;
+            items.forEach(el => el.classList.remove('selected'));
+            items[nextIdx].classList.add('selected');
+            items[nextIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIdx = (currentIndex - 1 + items.length) % items.length;
+            items.forEach(el => el.classList.remove('selected'));
+            items[prevIdx].classList.add('selected');
+            items[prevIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const selectedEl = dropdown.querySelector('.option-item.selected');
+            if (selectedEl) selectedEl.click();
+        } else if (e.key === 'Escape') closeDropdown();
+    });
+
+    clearBtn.addEventListener('click', function() {
+        selectedStandard = null;
+        selectedDisplay.style.display = 'none';
+        setAddMode();
+        document.getElementById('standardLength').value = '';
+        document.getElementById('standardWidth').value = '';
+        document.getElementById('standardThickness').value = '';
+        document.getElementById('standardColor').value = '';
+        document.getElementById('standardQty').value = 1;
+        searchInput.value = '';
+        renderDropdown(allStandards);
+    });
+    loadStandards();
+    window.refreshStandardSearch = loadStandards;
+})();
+
+// ============================================================
+// 整板操作
+// ============================================================
+const standardMode = document.getElementById('standardMode');
+const standardLength = document.getElementById('standardLength');
+const standardWidth = document.getElementById('standardWidth');
+const standardThickness = document.getElementById('standardThickness');
+const standardQty = document.getElementById('standardQty');
+const standardColor = document.getElementById('standardColor');
+const standardSubmitBtn = document.getElementById('standardSubmitBtn');
+const standardUpdateBtn = document.getElementById('standardUpdateBtn');
+const standardCancelBtn = document.getElementById('standardCancelBtn');
+const modeHint = document.getElementById('modeHint');
+const modeLabel = document.getElementById('modeLabel');
+
+function setAddMode() {
+    standardMode.value = 'add';
+    standardSubmitBtn.style.display = 'block';
+    standardUpdateBtn.style.display = 'none';
+    standardCancelBtn.style.display = 'none';
+    modeLabel.textContent = '入库模式';
+    modeLabel.className = 'badge bg-secondary';
+    modeHint.textContent = '当前模式：增加库存（若规格已存在则累加数量）';
+    standardSubmitBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>增加库存';
+}
+
+function setUpdateMode(length, width, thickness, quantity, color) {
+    standardMode.value = 'update';
+    standardLength.value = length;
+    standardWidth.value = width;
+    standardThickness.value = thickness;
+    standardQty.value = quantity;
+    standardColor.value = color;
+    standardSubmitBtn.style.display = 'none';
+    standardUpdateBtn.style.display = 'block';
+    standardCancelBtn.style.display = 'inline-block';
+    modeLabel.textContent = '更新模式';
+    modeLabel.className = 'badge bg-warning text-dark';
+    modeHint.textContent = '当前模式：将数量更新为指定值（覆盖）';
+    standardUpdateBtn.innerHTML = `<i class="bi bi-pencil me-1"></i>更新数量为 ${quantity}`;
+}
+
+document.querySelectorAll('.edit-standard').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const length = parseInt(this.dataset.length);
+        const width = parseInt(this.dataset.width);
+        const thickness = parseFloat(this.dataset.thickness);
+        const quantity = parseInt(this.dataset.quantity);
+        const color = this.dataset.color;
+        setUpdateMode(length, width, thickness, quantity, color);
+        document.getElementById('standardForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const selectedDisplay = document.getElementById('standardSelectedDisplay');
+        const selectedName = document.getElementById('standardSelectedName');
+        selectedName.textContent = `${color} ${length}×${width}×${thickness}mm (库存:${quantity}张)`;
+        selectedDisplay.style.display = 'block';
+        document.getElementById('standardSearchInput').value = '';
+    });
+});
+
+standardCancelBtn.addEventListener('click', function() {
+    document.getElementById('standardForm').reset();
+    standardQty.value = 1;
+    setAddMode();
+    document.getElementById('standardSelectedDisplay').style.display = 'none';
+});
+
+document.getElementById('standardForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const mode = standardMode.value;
+    const length = parseInt(standardLength.value);
+    const width = parseInt(standardWidth.value);
+    const thickness = parseFloat(standardThickness.value);
+    const quantity = parseInt(standardQty.value);
+    const color = standardColor.value.trim();
+    if (!length || !width || !thickness) { alert('请完整填写尺寸'); return; }
+    if (!color) { alert('请输入材料名称'); return; }
+    if (quantity < 0) { alert('数量不能为负数'); return; }
+
+    let url, method, body;
+    if (mode === 'add') {
+        url = '/api/v1/inventory/standard/add';
+        method = 'POST';
+        body = JSON.stringify({ length, width, thickness, quantity, color });
+    } else {
+        url = '/api/v1/inventory/standard/update';
+        method = 'POST';
+        body = JSON.stringify({ length, width, thickness, quantity, color });
+    }
+
+    fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body })
+    .then(res => res.ok ? res.json() : Promise.reject('操作失败'))
+    .then(data => { alert(data.message || '操作成功'); location.reload(); })
+    .catch(err => alert('错误: ' + err));
+});
+
+// 删除整板
+document.querySelectorAll('.delete-standard').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const length = this.dataset.length;
+        const width = this.dataset.width;
+        const thickness = this.dataset.thickness;
+        const color = encodeURIComponent(this.dataset.color);
+        if (!confirm(`确定要删除 ${length}×${width}×${thickness}mm 的整板吗？`)) return;
+        fetch(`/api/v1/inventory/standard/delete?length=${length}&width=${width}&thickness=${thickness}&color=${color}`, { method: 'DELETE' })
+        .then(res => res.ok ? res.json() : Promise.reject('删除失败'))
+        .then(data => { alert('删除成功'); location.reload(); })
+        .catch(err => alert('错误: ' + err));
+    });
+});
+
+// ============================================================
+// 余料搜索（独立，与整板逻辑一致）
+// ============================================================
+(function() {
+    const searchInput = document.getElementById('leftoverSearchInput');
+    const dropdown = document.getElementById('leftoverDropdown');
+    const selectedDisplay = document.getElementById('leftoverSelectedDisplay');
+    const selectedName = document.getElementById('leftoverSelectedName');
+    const clearBtn = document.getElementById('clearLeftoverSelection');
+    let allLeftovers = [];
+    let selectedLeftover = null;
+    let isDropdownOpen = false;
+
+    function loadLeftovers(keyword = '') {
+        fetch('/api/v1/inventory/leftovers/list')
+            .then(res => res.json())
+            .then(data => {
+                allLeftovers = data.data || [];
+                if (keyword) {
+                    const filtered = allLeftovers.filter(l => 
+                        (l.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                        String(l.length).includes(keyword) ||
+                        String(l.width).includes(keyword) ||
+                        String(l.thickness).includes(keyword)
+                    );
+                    renderDropdown(filtered);
+                } else {
+                    renderDropdown(allLeftovers);
+                }
+                if (allLeftovers.length === 0) dropdown.innerHTML = '<div class="no-result">暂无余料</div>';
+            })
+            .catch(err => { dropdown.innerHTML = '<div class="no-result">加载失败</div>'; });
+    }
+
+    function renderDropdown(items) {
+        if (!items || items.length === 0) {
+            dropdown.innerHTML = '<div class="no-result">未找到匹配的余料</div>';
+            return;
+        }
+        let html = '';
+        items.forEach(item => {
+            const isSelected = selectedLeftover && 
+                selectedLeftover.length === item.length &&
+                selectedLeftover.width === item.width &&
+                selectedLeftover.thickness === item.thickness &&
+                selectedLeftover.color === item.color;
+            html += `<div class="option-item ${isSelected ? 'selected' : ''}" 
+                        data-length="${item.length}"
+                        data-width="${item.width}"
+                        data-thickness="${item.thickness}"
+                        data-quantity="${item.quantity}"
+                        data-color="${item.color}">
+                <strong>${item.color || '未命名'}</strong>
+                <span style="color:#6c757d;font-size:12px;margin-left:8px;">
+                    ${item.length}×${item.width}×${item.thickness}mm 
+                    (库存: ${item.quantity}块)
+                </span>
+            </div>`;
+        });
+        dropdown.innerHTML = html;
+        dropdown.querySelectorAll('.option-item').forEach(el => {
+            el.addEventListener('click', function() {
+                const data = {
+                    length: parseInt(this.dataset.length),
+                    width: parseInt(this.dataset.width),
+                    thickness: parseFloat(this.dataset.thickness),
+                    quantity: parseInt(this.dataset.quantity),
+                    color: this.dataset.color
+                };
+                selectLeftover(data);
+                closeDropdown();
+            });
+        });
+    }
+
+    function selectLeftover(data) {
+        selectedLeftover = data;
+        document.getElementById('leftoverLength').value = data.length;
+        document.getElementById('leftoverWidth').value = data.width;
+        document.getElementById('leftoverThickness').value = data.thickness;
+        document.getElementById('leftoverColor').value = data.color;
+        document.getElementById('leftoverQty').value = data.quantity;
+        setLeftoverUpdateMode(data.length, data.width, data.thickness, data.quantity, data.color);
+        selectedName.textContent = `${data.color} ${data.length}×${data.width}×${data.thickness}mm (库存:${data.quantity}块)`;
+        selectedDisplay.style.display = 'block';
+        searchInput.value = '';
+        renderDropdown(allLeftovers);
+    }
+
+    function openDropdown() {
+        if (isDropdownOpen) return;
+        isDropdownOpen = true;
+        dropdown.style.display = 'block';
+        const keyword = searchInput.value.trim();
+        if (keyword === '') renderDropdown(allLeftovers);
+        else {
+            const filtered = allLeftovers.filter(l => 
+                (l.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                String(l.length).includes(keyword) ||
+                String(l.width).includes(keyword) ||
+                String(l.thickness).includes(keyword)
+            );
+            renderDropdown(filtered);
+        }
+    }
+    function closeDropdown() { isDropdownOpen = false; dropdown.style.display = 'none'; }
+
+    searchInput.addEventListener('input', function() {
+        const keyword = this.value.trim();
+        if (keyword === '') renderDropdown(allLeftovers);
+        else {
+            const filtered = allLeftovers.filter(l => 
+                (l.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                String(l.length).includes(keyword) ||
+                String(l.width).includes(keyword) ||
+                String(l.thickness).includes(keyword)
+            );
+            renderDropdown(filtered);
+        }
+        openDropdown();
+    });
+    searchInput.addEventListener('click', function(e) { e.stopPropagation(); if (allLeftovers.length === 0) loadLeftovers(); else openDropdown(); });
+    document.addEventListener('click', function(e) { if (!document.getElementById('leftoverSelectWrapper').contains(e.target)) closeDropdown(); });
+    searchInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.option-item');
+        if (items.length === 0) return;
+        let currentIndex = -1;
+        items.forEach((el, idx) => { if (el.classList.contains('selected')) currentIndex = idx; });
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIdx = (currentIndex + 1) % items.length;
+            items.forEach(el => el.classList.remove('selected'));
+            items[nextIdx].classList.add('selected');
+            items[nextIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIdx = (currentIndex - 1 + items.length) % items.length;
+            items.forEach(el => el.classList.remove('selected'));
+            items[prevIdx].classList.add('selected');
+            items[prevIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const selectedEl = dropdown.querySelector('.option-item.selected');
+            if (selectedEl) selectedEl.click();
+        } else if (e.key === 'Escape') closeDropdown();
+    });
+
+    clearBtn.addEventListener('click', function() {
+        selectedLeftover = null;
+        selectedDisplay.style.display = 'none';
+        setLeftoverAddMode();
+        document.getElementById('leftoverLength').value = '';
+        document.getElementById('leftoverWidth').value = '';
+        document.getElementById('leftoverThickness').value = '';
+        document.getElementById('leftoverColor').value = '';
+        document.getElementById('leftoverQty').value = 1;
+        searchInput.value = '';
+        renderDropdown(allLeftovers);
+    });
+    loadLeftovers();
+})();
+
+// ============================================================
+// 余料操作
+// ============================================================
+const leftoverMode = document.getElementById('leftoverMode');
+const leftoverLength = document.getElementById('leftoverLength');
+const leftoverWidth = document.getElementById('leftoverWidth');
+const leftoverThickness = document.getElementById('leftoverThickness');
+const leftoverQty = document.getElementById('leftoverQty');
+const leftoverColor = document.getElementById('leftoverColor');
+const leftoverSubmitBtn = document.getElementById('leftoverSubmitBtn');
+const leftoverUpdateBtn = document.getElementById('leftoverUpdateBtn');
+const leftoverCancelBtn = document.getElementById('leftoverCancelBtn');
+const leftoverModeHint = document.getElementById('leftoverModeHint');
+const leftoverModeLabel = document.getElementById('leftoverModeLabel');
+
+function setLeftoverAddMode() {
+    leftoverMode.value = 'add';
+    leftoverSubmitBtn.style.display = 'block';
+    leftoverUpdateBtn.style.display = 'none';
+    leftoverCancelBtn.style.display = 'none';
+    leftoverModeLabel.textContent = '入库模式';
+    leftoverModeLabel.className = 'badge bg-secondary';
+    leftoverModeHint.textContent = '当前模式：增加余料（若规格已存在则累加数量）';
+    leftoverSubmitBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>增加余料';
+}
+
+function setLeftoverUpdateMode(length, width, thickness, quantity, color) {
+    leftoverMode.value = 'update';
+    leftoverLength.value = length;
+    leftoverWidth.value = width;
+    leftoverThickness.value = thickness;
+    leftoverQty.value = quantity;
+    leftoverColor.value = color;
+    leftoverSubmitBtn.style.display = 'none';
+    leftoverUpdateBtn.style.display = 'block';
+    leftoverCancelBtn.style.display = 'inline-block';
+    leftoverModeLabel.textContent = '更新模式';
+    leftoverModeLabel.className = 'badge bg-warning text-dark';
+    leftoverModeHint.textContent = '当前模式：将数量更新为指定值（覆盖）';
+    leftoverUpdateBtn.innerHTML = `<i class="bi bi-pencil me-1"></i>更新数量为 ${quantity}`;
+}
+
+// 编辑余料
+document.querySelectorAll('.edit-leftover').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const length = parseInt(this.dataset.length);
+        const width = parseInt(this.dataset.width);
+        const thickness = parseFloat(this.dataset.thickness);
+        const quantity = parseInt(this.dataset.quantity);
+        const color = this.dataset.color;
+        setLeftoverUpdateMode(length, width, thickness, quantity, color);
+        document.getElementById('leftoverForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const selectedDisplay = document.getElementById('leftoverSelectedDisplay');
+        const selectedName = document.getElementById('leftoverSelectedName');
+        selectedName.textContent = `${color} ${length}×${width}×${thickness}mm (库存:${quantity}块)`;
+        selectedDisplay.style.display = 'block';
+        document.getElementById('leftoverSearchInput').value = '';
+    });
+});
+
+leftoverCancelBtn.addEventListener('click', function() {
+    document.getElementById('leftoverForm').reset();
+    leftoverQty.value = 1;
+    setLeftoverAddMode();
+    document.getElementById('leftoverSelectedDisplay').style.display = 'none';
+});
+
+document.getElementById('leftoverForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const mode = leftoverMode.value;
+    const length = parseInt(leftoverLength.value);
+    const width = parseInt(leftoverWidth.value);
+    const thickness = parseFloat(leftoverThickness.value);
+    const quantity = parseInt(leftoverQty.value);
+    const color = leftoverColor.value.trim();
+    if (!length || !width || !thickness) { alert('请完整填写尺寸'); return; }
+    if (!color) { alert('请输入材料名称'); return; }
+    if (quantity < 0) { alert('数量不能为负数'); return; }
+
+    let url, method, body;
+    if (mode === 'add') {
+        url = '/api/v1/inventory/leftover/add';
+        method = 'POST';
+        body = JSON.stringify({ length, width, thickness, quantity, color });
+    } else {
+        url = '/api/v1/inventory/leftover/update';
+        method = 'POST';
+        body = JSON.stringify({ length, width, thickness, quantity, color });
+    }
+
+    fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body })
+    .then(res => res.ok ? res.json() : Promise.reject('操作失败'))
+    .then(data => { alert(data.message || '操作成功'); location.reload(); })
+    .catch(err => alert('错误: ' + err));
+});
+
+// 删除余料
+document.querySelectorAll('.delete-leftover').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const length = this.dataset.length;
+        const width = this.dataset.width;
+        const thickness = this.dataset.thickness;
+        const color = encodeURIComponent(this.dataset.color);
+        if (!confirm(`确定要删除 ${length}×${width}×${thickness}mm 的余料吗？`)) return;
+        fetch(`/api/v1/inventory/leftover/delete?length=${length}&width=${width}&thickness=${thickness}&color=${color}`, { method: 'DELETE' })
+        .then(res => res.ok ? res.json() : Promise.reject('删除失败'))
+        .then(data => { alert('删除成功'); location.reload(); })
+        .catch(err => alert('错误: ' + err));
+    });
+});
+</script>
+{% endblock %}

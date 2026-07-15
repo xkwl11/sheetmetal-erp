@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-speedometer2 me-2"></i>生产仪表盘</h2>
+    <span class="text-muted">数据实时更新</span>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <div class="text-muted small">可用余料</div>
+                    <h3 class="mb-0">{{ stats.leftover_count }}</h3>
+                </div>
+                <div class="fs-1 text-primary"><i class="bi bi-puzzle"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card green p-3">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <div class="text-muted small">整板库存</div>
+                    <h3 class="mb-0">{{ stats.total_standard }}</h3>
+                </div>
+                <div class="fs-1 text-success"><i class="bi bi-stack"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card orange p-3">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <div class="text-muted small">今日套料</div>
+                    <h3 class="mb-0">{{ stats.today_nesting }}</h3>
+                </div>
+                <div class="fs-1 text-warning"><i class="bi bi-calculator"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card purple p-3">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <div class="text-muted small">零件总数</div>
+                    <h3 class="mb-0">{{ stats.total_parts }}</h3>
+                </div>
+                <div class="fs-1 text-purple"><i class="bi bi-list-ul"></i></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 整板库存明细 -->
+<div class="card">
+    <div class="card-header bg-white">
+        <i class="bi bi-stack me-2"></i>整板库存明细
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead><tr><th>长度 (米)</th><th>数量 (张)</th><th>色号/材质</th></tr></thead>
+                <tbody>
+                    {% for item in stats.standard_details %}
+                    <tr>
+                        <td>{{ item.length }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>{{ item.color }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 最近余料 -->
+<div class="card mt-4">
+    <div class="card-header bg-white">
+        <i class="bi bi-puzzle me-2"></i>最近可用余料 (前5条)
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead><tr><th>编号</th><th>长度 (米)</th><th>宽度 (米)</th><th>色号</th></tr></thead>
+                <tbody>
+                    {% for item in stats.recent_leftovers %}
+                    <tr>
+                        <td>{{ item.id }}</td>
+                        <td>{{ item.length }}</td>
+                        <td>{{ item.width }}</td>
+                        <td>{{ item.color }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

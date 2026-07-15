@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>钣金ERP - {% block title %}管理系统{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { padding-top: 56px; background-color: #f8f9fa; }
+        .sidebar { position: fixed; top: 56px; bottom: 0; left: 0; width: 220px; background: #fff; border-right: 1px solid #dee2e6; padding-top: 20px; }
+        .sidebar .nav-link { color: #495057; border-radius: 0; padding: 10px 20px; }
+        .sidebar .nav-link:hover { background: #e9ecef; }
+        .sidebar .nav-link.active { background: #0d6efd; color: #fff; }
+        .main-content { margin-left: 220px; padding: 20px; }
+        .card { border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .stat-card { border-left: 4px solid #0d6efd; }
+        .stat-card.green { border-left-color: #198754; }
+        .stat-card.orange { border-left-color: #fd7e14; }
+        .stat-card.purple { border-left-color: #6f42c1; }
+        .navbar-brand { font-weight: 700; color: #0d6efd !important; }
+        .navbar-brand i { margin-right: 8px; }
+        @media (max-width: 768px) { .sidebar { display: none; } .main-content { margin-left: 0; } }
+        .table-responsive { overflow-x: auto; }
+        .badge-available { background: #198754; }
+        .badge-used { background: #dc3545; }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <nav class="navbar navbar-expand-md navbar-light bg-white fixed-top border-bottom">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/"><i class="bi bi-tools"></i>钣金ERP</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navMenu">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><span class="nav-link text-muted">v1.2 | BETA内测版</span></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 左侧菜单 -->
+    <div class="sidebar">
+        <ul class="nav flex-column">
+    <li class="nav-item">
+        <a class="nav-link {% if active_page == 'index' %}active{% endif %}" href="/">
+            <i class="bi bi-speedometer2 me-2"></i>仪表盘
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_page == 'nesting' %}active{% endif %}" href="/nesting">
+            <i class="bi bi-layers me-2"></i>套料计算器
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_page == 'inventory' %}active{% endif %}" href="/inventory">
+            <i class="bi bi-box-seam me-2"></i>库存管理
+                </a>
+            </li>
+        </ul>
+
+    <li class="nav-item">
+    <a class="nav-link {% if active_page == 'orders' %}active{% endif %}" href="/orders">
+        <i class="bi bi-receipt me-2"></i>订单管理
+    </a>
+</li>  
+    <li class="nav-item">
+    <a class="nav-link {% if active_page == 'attachments' %}active{% endif %}" href="/attachments">
+        <i class="bi bi-paperclip me-2"></i>附件管理
+    </a>
+</li>
+    <li class="nav-item">
+    <a class="nav-link {% if active_page == 'finance' %}active{% endif %}" href="/finance/pricing">
+        <i class="bi bi-currency-dollar me-2"></i>财务管理
+    </a>
+</li>
+    </div>
+    
+
+    <!-- 主内容 -->
+    <div class="main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

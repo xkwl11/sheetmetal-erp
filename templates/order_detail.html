@@ -1,0 +1,717 @@
+{% extends "base.html" %}
+
+{% block title %}订单详情 - {{ order.order_no }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .summary-card { background: #f8f9fa; border-radius: 8px; padding: 12px; }
+    .summary-card .label { color: #6c757d; font-size: 13px; }
+    .summary-card .value { font-size: 18px; font-weight: 600; color: #0d6efd; }
+    .summary-card .value.tax { color: #198754; }
+    .summary-card .value.exclude { color: #0d6efd; }
+    .canvas-wrapper { width: 100%; overflow-x: auto; text-align: center; background: #fafafa; border-radius: 4px; padding: 10px; min-height: 60px; }
+    .canvas-wrapper canvas { max-width: 100%; height: auto; background: #fff; border: 1px solid #ddd; }
+    .attachment-item { transition: transform 0.2s; cursor: default; }
+    .attachment-item:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .attachment-item img { width: 100%; height: 120px; object-fit: contain; background: #f8f9fa; border-radius: 4px; }
+    .attachment-item .file-icon { font-size: 48px; color: #0d6efd; }
+    .attachment-item .filename { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .attachment-item .meta { font-size: 10px; color: #6c757d; }
+    .preview-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.85); z-index:9999; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+    .preview-overlay img { max-width:90%; max-height:90%; object-fit:contain; border-radius:8px; box-shadow:0 4px 30px rgba(0,0,0,0.5); }
+    .material-card { border-left: 4px solid #0d6efd; }
+    .material-card .material-header { background: #f8f9fa; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-receipt me-2"></i>订单详情</h2>
+    <div>
+        <span class="badge {% if order.status == 'draft' %}bg-secondary{% elif order.status == 'nested' %}bg-primary{% else %}bg-success{% endif %} me-2">
+            {{ {'draft':'草稿', 'nested':'已排版', 'confirmed':'已确认'}[order.status] }}
+        </span>
+        <span class="badge bg-info">{{ order.order_no }}</span>
+    </div>
+</div>
+
+<!-- 基本信息 -->
+<div class="card mb-3">
+    <div class="card-header bg-white"><i class="bi bi-info-circle me-2"></i>基本信息</div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3"><strong>客户：</strong>{{ order.customer_name or '-' }}</div>
+            <div class="col-md-3"><strong>电话：</strong>{{ order.customer_phone or '-' }}</div>
+            <div class="col-md-3"><strong>创建时间：</strong>{{ order.created_at }}</div>
+            <div class="col-md-3"><strong>零件数：</strong>{{ order.parts|length }}</div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-3"><strong>运输方式：</strong>{{ order.transport_method or '自提' }}</div>
+            <div class="col-md-6"><strong>地址：</strong>{{ order.delivery_address or '-' }}</div>
+            <div class="col-md-3"><strong>备注：</strong>{{ order.notes or '-' }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- 财务汇总 -->
+<div class="card mb-3">
+    <div class="card-header bg-white"><i class="bi bi-currency-dollar me-2"></i>财务汇总</div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="summary-card">
+                    <div class="label">材料费</div>
+                    <div class="value">¥{{ "%.2f"|format(order.total_material or 0) }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="summary-card">
+                    <div class="label">工艺费</div>
+                    <div class="value">¥{{ "%.2f"|format(order.total_process or 0) }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="summary-card">
+                    <div class="label">不含税总价</div>
+                    <div class="value exclude">¥{{ "%.2f"|format(order.total_price or 0) }}</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="summary-card">
+                    <div class="label">含税总价 (税率 {{ (order.tax_rate|default(0.13) * 100)|int }}%)</div>
+                    <div class="value tax">¥{{ "%.2f"|format((order.total_price or 0) * (1 + order.tax_rate|default(0.13))) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-4">
+                <small class="text-muted">总面积：{{ "%.4f"|format(order.total_area or 0) }} m²</small>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted">税率：{{ (order.tax_rate|default(0.13) * 100)|int }}%</small>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted">价格含税：{{ '含税' if order.tax_included else '不含税' }}</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 零件清单 -->
+<div class="card mb-3">
+    <div class="card-header bg-white d-flex justify-content-between">
+        <span><i class="bi bi-grid-3x3-gap-fill me-2"></i>零件清单</span>
+        {% if order.status == 'draft' %}
+        <a href="/orders/{{ order.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if order.parts and order.parts|length > 0 %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>零件编号</th>
+                        <th>长度(mm)</th>
+                        <th>宽度(mm)</th>
+                        <th>数量</th>
+                        <th>材料</th>
+                        <th>面积(㎡)</th>
+                        <th>单价(元/㎡)</th>
+                        <th>材料费(元)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.parts %}
+                    <tr>
+                        <td>{{ item.part_id }}</td>
+                        <td>{{ item.length }}</td>
+                        <td>{{ item.width }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>{{ item.material or '默认材料' }}</td>
+                        <td>{{ "%.4f"|format(item.area or 0) }}</td>
+                        <td>{{ "%.2f"|format(item.unit_price or 0) }}</td>
+                        <td>{{ "%.2f"|format(item.total_price or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="5" class="text-end"><strong>材料合计</strong></td>
+                        <td><strong>{{ "%.4f"|format(order.total_area or 0) }}</strong></td>
+                        <td></td>
+                        <td><strong>{{ "%.2f"|format(order.total_material or 0) }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-muted text-center py-3">暂无零件</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 工艺汇总 -->
+<div class="card mb-3">
+    <div class="card-header bg-white"><i class="bi bi-tools me-2"></i>工艺汇总</div>
+    <div class="card-body">
+        {% if order.processes and order.processes|length > 0 %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>加工工艺</th>
+                        <th>加工量</th>
+                        <th>单位</th>
+                        <th>单价(元)</th>
+                        <th>工艺费(元)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for proc in order.processes %}
+                    <tr>
+                        <td>{{ proc.process }}</td>
+                        <td>{{ proc.quantity }}</td>
+                        <td>{{ proc.unit }}</td>
+                        <td>{{ "%.2f"|format(proc.unit_price) }}</td>
+                        <td>{{ "%.2f"|format(proc.total_price) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="4" class="text-end"><strong>工艺合计</strong></td>
+                        <td><strong>{{ "%.2f"|format(order.total_process or 0) }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-muted text-center py-3">暂无工艺信息</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 附件管理 -->
+<div class="card mb-3">
+    <div class="card-header bg-white d-flex justify-content-between">
+        <span><i class="bi bi-paperclip me-2"></i>附件管理</span>
+        {% if order.status == 'draft' %}
+        <div>
+            <button class="btn btn-sm btn-primary" id="uploadBtn"><i class="bi bi-upload me-1"></i>上传附件</button>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <div id="attachmentList">
+            <div class="text-muted text-center py-3">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<!-- 套料排版（多材料） -->
+<div class="card mb-3">
+    <div class="card-header bg-white"><i class="bi bi-layers me-2"></i>套料排版</div>
+    <div class="card-body">
+        {% if order.status == 'draft' %}
+        <div class="alert alert-info">
+            <strong>检测到 {{ order.parts|map(attribute='material')|unique|list|length }} 种材料</strong>
+            <ul class="mb-0 mt-1">
+                {% for mat in order.parts|map(attribute='material')|unique|list %}
+                <li>{{ mat }}（{{ order.parts|selectattr('material', 'equalto', mat)|list|length }} 个零件）</li>
+                {% endfor %}
+            </ul>
+        </div>
+        <button class="btn btn-primary" id="nestBtn"><i class="bi bi-calculator me-1"></i>一键套料（全部材料）</button>
+        <div id="nestResult" class="mt-3" style="display:none;"></div>
+        
+        {% elif order.status == 'nested' and order.nesting_by_material %}
+        <div class="alert alert-primary">套料方案已生成，请确认后扣减库存。</div>
+        <div id="schemeDisplay" class="mt-3"></div>
+        <div class="mt-3">
+            <button class="btn btn-success" id="confirmBtn"><i class="bi bi-check-circle me-1"></i>确认套料</button>
+            <button class="btn btn-outline-secondary" id="recalcBtn"><i class="bi bi-arrow-repeat me-1"></i>重新计算</button>
+        </div>
+        
+        {% elif order.status == 'confirmed' %}
+        <div class="alert alert-success">套料已确认，库存已更新。</div>
+        <div id="schemeDisplay" class="mt-3"></div>
+        
+        {% elif order.status == 'nested' and not order.nesting_by_material %}
+        <div class="alert alert-warning">套料方案格式不兼容，请重新计算。</div>
+        <button class="btn btn-primary" id="nestBtn"><i class="bi bi-calculator me-1"></i>重新套料</button>
+        <div id="nestResult" class="mt-3" style="display:none;"></div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 底部操作按钮 -->
+<div class="d-flex gap-2">
+    <a href="/orders" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+    {% if order.status != 'confirmed' %}
+    <button class="btn btn-outline-danger" onclick="deleteOrder()"><i class="bi bi-trash me-1"></i>删除订单</button>
+    {% endif %}
+</div>
+
+<!-- 隐藏的文件上传表单 -->
+<input type="file" id="fileInput" style="display:none;" multiple>
+
+<!-- ==================== JavaScript ==================== -->
+<script>
+// ============================================================
+//  JS辅助函数
+// ============================================================
+function isImageFile(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'].includes(ext);
+}
+
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const icons = {
+        'pdf': 'bi-filetype-pdf', 'doc': 'bi-filetype-doc', 'docx': 'bi-filetype-docx',
+        'xls': 'bi-filetype-xls', 'xlsx': 'bi-filetype-xlsx',
+        'jpg': 'bi-filetype-jpg', 'jpeg': 'bi-filetype-jpg',
+        'png': 'bi-filetype-png', 'gif': 'bi-filetype-gif',
+        'dwg': 'bi-filetype-dwg', 'dxf': 'bi-filetype-dxf',
+        'zip': 'bi-filetype-zip', 'rar': 'bi-filetype-rar',
+        'txt': 'bi-filetype-txt'
+    };
+    return icons[ext] || 'bi-file-earmark';
+}
+
+function previewImage(url) {
+    const overlay = document.createElement('div');
+    overlay.className = 'preview-overlay';
+    overlay.onclick = function() { this.remove(); };
+    const img = document.createElement('img');
+    img.src = url;
+    overlay.appendChild(img);
+    document.body.appendChild(overlay);
+}
+
+// ============================================================
+//  加载材料列表
+// ============================================================
+function loadMaterials() {
+    fetch('/api/v1/materials/search')
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('materialSelect');
+            if (!select) return;
+            if (data.data && data.data.length > 0) {
+                select.innerHTML = data.data.map(m => 
+                    `<option value="${m.color}">${m.color} (厚${m.thickness}mm, 宽${m.width}mm)</option>`
+                ).join('');
+            } else {
+                select.innerHTML = '<option value="">暂无材料，请先入库</option>';
+            }
+        })
+        .catch(err => console.error('加载材料失败:', err));
+}
+
+// ============================================================
+//  附件管理
+// ============================================================
+function loadAttachments() {
+    const orderId = {{ order.id }};
+    const container = document.getElementById('attachmentList');
+    container.innerHTML = '<div class="text-muted text-center py-3">加载中...</div>';
+    
+    fetch(`/api/orders/${orderId}/attachments`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.length === 0) {
+                container.innerHTML = '<div class="text-muted text-center py-3">暂无附件</div>';
+                return;
+            }
+            let html = '<div class="row g-3">';
+            data.forEach(att => {
+                const size = (att.filesize / 1024).toFixed(1) + ' KB';
+                const isImage = isImageFile(att.filename);
+                const icon = getFileIcon(att.filename);
+                
+                if (isImage) {
+                    html += `
+                        <div class="col-md-3 col-sm-4 col-6">
+                            <div class="card h-100 attachment-item">
+                                <div class="card-body text-center p-2">
+                                    <img src="/api/orders/attachments/${att.id}/thumbnail" 
+                                         class="img-fluid rounded" 
+                                         style="max-height:120px; width:100%; object-fit:contain; cursor:pointer;"
+                                         onclick="previewImage('/api/orders/attachments/${att.id}/download')"
+                                         alt="${att.filename}"
+                                         onerror="this.style.display='none';this.parentElement.innerHTML='<i class=\\'bi ${icon}\\' style=\\'font-size:48px;color:#6c757d;\\'></i>'">
+                                    <div class="mt-1">
+                                        <span class="filename" title="${att.filename}">${att.filename}</span>
+                                        <span class="badge bg-secondary" style="font-size:10px;">${size}</span>
+                                        <span class="meta">${att.uploaded_at}</span>
+                                    </div>
+                                    <div class="btn-group btn-group-sm mt-1">
+                                        <a href="/api/orders/attachments/${att.id}/download" class="btn btn-outline-primary" target="_blank"><i class="bi bi-download"></i></a>
+                                        {% if order.status == 'draft' %}
+                                        <button class="btn btn-outline-danger delete-attachment" data-id="${att.id}"><i class="bi bi-trash"></i></button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="col-md-3 col-sm-4 col-6">
+                            <div class="card h-100 attachment-item">
+                                <div class="card-body text-center p-3">
+                                    <i class="bi ${icon}" style="font-size:48px;color:#0d6efd;"></i>
+                                    <div class="mt-2">
+                                        <span class="filename" title="${att.filename}">${att.filename}</span>
+                                        <span class="badge bg-secondary" style="font-size:10px;">${size}</span>
+                                        <span class="meta">${att.uploaded_at}</span>
+                                    </div>
+                                    <div class="btn-group btn-group-sm mt-1">
+                                        <a href="/api/orders/attachments/${att.id}/download" class="btn btn-outline-primary" target="_blank"><i class="bi bi-download"></i></a>
+                                        {% if order.status == 'draft' %}
+                                        <button class="btn btn-outline-danger delete-attachment" data-id="${att.id}"><i class="bi bi-trash"></i></button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            html += '</div>';
+            container.innerHTML = html;
+            
+            container.querySelectorAll('.delete-attachment').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    if (!confirm('确定要删除此附件吗？')) return;
+                    fetch(`/api/orders/attachments/${id}`, { method: 'DELETE' })
+                        .then(res => res.json())
+                        .then(() => loadAttachments())
+                        .catch(err => alert('删除失败: ' + err.message));
+                });
+            });
+        })
+        .catch(err => {
+            console.error('加载附件失败:', err);
+            container.innerHTML = '<div class="text-muted text-center py-3">加载附件失败</div>';
+        });
+}
+
+document.getElementById('uploadBtn')?.addEventListener('click', function() {
+    document.getElementById('fileInput').click();
+});
+
+document.getElementById('fileInput')?.addEventListener('change', function() {
+    const files = this.files;
+    if (files.length === 0) return;
+    const orderId = {{ order.id }};
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+    }
+    
+    const btn = document.getElementById('uploadBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>上传中...';
+    btn.disabled = true;
+    
+    fetch(`/api/orders/${orderId}/attachments/batch`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => {
+        if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '上传失败'); });
+        return res.json();
+    })
+    .then(() => {
+        alert('上传成功！');
+        loadAttachments();
+        document.getElementById('fileInput').value = '';
+    })
+    .catch(err => alert('上传失败: ' + err.message))
+    .finally(() => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    });
+});
+
+// ============================================================
+//  套料方案显示（多材料）
+// ============================================================
+function displayScheme(scheme) {
+    const container = document.getElementById('schemeDisplay');
+    if (!container) return;
+    
+    // 检查是否是多材料格式
+    if (scheme && scheme.results && scheme.summary) {
+        // 多材料格式
+        let html = `
+            <div class="alert alert-info">
+                <strong>套料方案汇总</strong> - 共使用 ${scheme.summary.total_plates} 张板
+                （整板 ${scheme.summary.total_standard} 张，余料 ${scheme.summary.total_leftover} 块）
+            </div>
+        `;
+        
+        scheme.summary.materials.forEach((mat, idx) => {
+            html += `
+                <div class="card mb-2 material-card">
+                    <div class="card-header material-header">
+                        <strong>📦 ${mat.material}</strong>
+                        <span class="badge bg-primary ms-2">${mat.total_plates} 张板</span>
+                        <span class="badge bg-secondary ms-2">${mat.parts_count} 个零件</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="material-scheme-${idx}"></div>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+        
+        // 渲染每个材料的方案
+        scheme.summary.materials.forEach((mat, idx) => {
+            const subContainer = document.getElementById(`material-scheme-${idx}`);
+            if (subContainer && mat.scheme) {
+                renderSingleScheme(mat.scheme, subContainer);
+            }
+        });
+        return;
+    }
+    
+    // 兼容旧格式（单一材料）
+    renderSingleScheme(scheme, container);
+}
+
+function renderSingleScheme(scheme, container) {
+    if (!scheme || !scheme.bins || scheme.bins.length === 0) {
+        container.innerHTML = '<div class="text-muted">无套料方案</div>';
+        return;
+    }
+    
+    let html = '<div class="accordion">';
+    scheme.bins.forEach((bin, idx) => {
+        const remainLen = bin.length - bin.used_length;
+        const totalWidth = bin.layers.reduce((s, l) => s + l.width, 0);
+        const remainWidth = bin.width - totalWidth;
+        const label = bin.type === 'leftover' ? `余料 ${bin.leftover_id}` : `整板 ${idx+1}`;
+        const canvasId = `canvas-${Date.now()}-${idx}`;
+        html += `
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${canvasId}">
+                        ${label} (${bin.length}×${bin.width}) - 占用长度 ${bin.used_length}mm
+                    </button>
+                </h2>
+                <div id="collapse-${canvasId}" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="canvas-wrapper"><canvas id="${canvasId}"></canvas></div>
+                        <div class="mt-2 small">
+                            <span class="text-muted">剩余长度 ${remainLen}mm，剩余宽度 ${remainWidth}mm</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    
+    // 绘制 Canvas
+    setTimeout(() => {
+        scheme.bins.forEach((bin, idx) => {
+            const canvas = container.querySelector(`#canvas-${Date.now() - idx + idx}`) || 
+                           container.querySelector(`canvas`);
+            if (canvas) drawLayout(canvas, bin);
+        });
+    }, 200);
+}
+
+// ============================================================
+//  绘制套料图
+// ============================================================
+function drawLayout(canvas, bin) {
+    const wrapper = canvas.parentElement;
+    const containerWidth = wrapper ? wrapper.clientWidth - 20 : 500;
+    const scale = Math.min(containerWidth / bin.length, 300 / bin.width, 1.5);
+    const cw = bin.length * scale;
+    const ch = bin.width * scale;
+    canvas.width = cw;
+    canvas.height = ch;
+    canvas.style.width = cw + 'px';
+    canvas.style.height = ch + 'px';
+    
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, cw, ch);
+    
+    const colors = {};
+    function getColor(id) {
+        if (!colors[id]) {
+            const hash = parseInt(id.slice(-3), 36) || 0;
+            colors[id] = `hsl(${(hash * 137 + 180) % 360}, 70%, 70%)`;
+        }
+        return colors[id];
+    }
+    
+    bin.layout.forEach(rect => {
+        const x = rect.x * scale;
+        const y = rect.y * scale;
+        const w = rect.w * scale;
+        const h = rect.h * scale;
+        ctx.fillStyle = getColor(rect.part_id);
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = '#000';
+        ctx.font = `${Math.min(w, h) / 4}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(rect.part_id, x + w/2, y + h/2);
+        if (rect.w && rect.h) {
+            ctx.font = `${Math.min(w, h) / 6}px sans-serif`;
+            ctx.fillText(`${rect.w}×${rect.h}`, x + w/2, y + h/2 + 16);
+        }
+    });
+}
+
+// ============================================================
+//  按钮事件
+// ============================================================
+document.getElementById('nestBtn')?.addEventListener('click', function() {
+    const orderId = {{ order.id }};
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>计算中...';
+    
+    fetch(`/api/orders/${orderId}/nest`, { method: 'POST' })
+        .then(res => {
+            if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '套料失败'); });
+            return res.json();
+        })
+        .then(data => {
+            const nesting = data.nesting_by_material;
+            document.getElementById('nestResult').style.display = 'block';
+            document.getElementById('nestResult').innerHTML = `
+                <div class="alert alert-success">套料完成！共 ${nesting.summary.total_plates} 张板</div>
+                <div id="material-results"></div>
+            `;
+            
+            // 显示每个材料的套料结果
+            const container = document.getElementById('material-results');
+            nesting.summary.materials.forEach((mat, idx) => {
+                const subContainer = document.createElement('div');
+                subContainer.className = 'card mb-2 material-card';
+                subContainer.innerHTML = `
+                    <div class="card-header material-header">
+                        <strong>📦 ${mat.material}</strong>
+                        <span class="badge bg-primary ms-2">${mat.total_plates} 张板</span>
+                        <span class="badge bg-secondary ms-2">${mat.parts_count} 个零件</span>
+                    </div>
+                    <div class="card-body" id="result-material-${idx}"></div>
+                `;
+                container.appendChild(subContainer);
+                
+                const subRender = document.getElementById(`result-material-${idx}`);
+                if (subRender && mat.scheme) {
+                    renderSingleScheme(mat.scheme, subRender);
+                }
+            });
+            
+            alert('套料计算完成！');
+            location.reload();
+        })
+        .catch(err => alert('套料失败: ' + err.message))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-calculator me-1"></i>一键套料（全部材料）';
+        });
+});
+
+document.getElementById('confirmBtn')?.addEventListener('click', function() {
+    if (!confirm('确认此套料方案？将扣减库存并生成余料。')) return;
+    const orderId = {{ order.id }};
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>确认中...';
+    
+    fetch(`/api/orders/${orderId}/confirm`, { method: 'POST' })
+        .then(res => {
+            if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '确认失败'); });
+            return res.json();
+        })
+        .then(() => {
+            alert('套料已确认，库存已更新！');
+            location.reload();
+        })
+        .catch(err => alert('确认失败: ' + err.message))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>确认套料';
+        });
+});
+
+document.getElementById('recalcBtn')?.addEventListener('click', function() {
+    if (!confirm('重新计算将覆盖当前方案，是否继续？')) return;
+    const orderId = {{ order.id }};
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>计算中...';
+    
+    fetch(`/api/orders/${orderId}/nest`, { method: 'POST' })
+        .then(res => res.json())
+        .then(() => {
+            alert('重新计算完成！');
+            location.reload();
+        })
+        .catch(err => alert('失败: ' + err.message))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>重新计算';
+        });
+});
+
+function deleteOrder() {
+    if (!confirm('确定要删除此订单吗？此操作不可恢复！')) return;
+    const orderId = {{ order.id }};
+    fetch(`/api/orders/${orderId}`, { method: 'DELETE' })
+        .then(res => {
+            if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '删除失败'); });
+            return res.json();
+        })
+        .then(() => window.location.href = '/orders')
+        .catch(err => alert('删除失败: ' + err.message));
+}
+
+// ============================================================
+//  初始化
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    loadAttachments();
+    
+    // 如果有套料方案（多材料格式），显示
+    {% if order.nesting_by_material %}
+    displayScheme({{ order.nesting_by_material|tojson }});
+    {% elif order.nesting_result %}
+    // 兼容旧格式
+    displayScheme({{ order.nesting_result|tojson }});
+    {% endif %}
+});
+
+// 快捷键 Ctrl+Enter
+document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        const nestBtn = document.getElementById('nestBtn');
+        if (nestBtn && !nestBtn.disabled) {
+            nestBtn.click();
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,774 @@
+{% extends "base.html" %}
+
+{% block title %}套料计算器{% endblock %}
+
+{% block extra_css %}
+<style>
+    .material-info { 
+        background: #f8f9fa; 
+        padding: 10px 15px; 
+        border-radius: 8px; 
+        border-left: 4px solid #0d6efd; 
+    }
+    .material-info .label { font-weight: 600; color: #495057; }
+    .material-info .value { color: #0d6efd; font-weight: 500; }
+    .result-item { margin-bottom: 8px; }
+
+    .search-select-wrapper {
+        position: relative;
+    }
+    .search-select-wrapper .search-input {
+        width: 100%;
+        padding: 6px 30px 6px 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    .search-select-wrapper .search-input:focus {
+        outline: none;
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    .search-select-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        max-height: 280px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        display: none;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        margin-top: 2px;
+    }
+    .search-select-dropdown .option-item {
+        padding: 6px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f1f1;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .search-select-dropdown .option-item:hover {
+        background-color: #e9ecef;
+    }
+    .search-select-dropdown .option-item.selected {
+        background-color: #0d6efd;
+        color: #fff;
+    }
+    .search-select-dropdown .option-item .source-tag {
+        font-size: 11px;
+        padding: 1px 8px;
+        border-radius: 10px;
+        background: #e9ecef;
+        color: #495057;
+        margin-left: 8px;
+    }
+    .search-select-dropdown .option-item.selected .source-tag {
+        background: rgba(255,255,255,0.3);
+        color: #fff;
+    }
+    .search-select-dropdown .no-result {
+        padding: 10px 12px;
+        color: #6c757d;
+        font-style: italic;
+    }
+    .selected-display {
+        margin-top: 6px;
+        padding: 4px 10px;
+        background: #e9ecef;
+        border-radius: 4px;
+        font-size: 13px;
+        color: #495057;
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+    .selected-display .selected-text {
+        flex: 1;
+    }
+    .selected-display strong {
+        color: #0d6efd;
+    }
+    .selected-display .btn-clear {
+        margin-left: 10px;
+        font-size: 12px;
+        padding: 2px 10px;
+        background: transparent;
+        border: 1px solid #dc3545;
+        color: #dc3545;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .selected-display .btn-clear:hover {
+        background: #dc3545;
+        color: #fff;
+    }
+    .accordion-body pre {
+        font-size: 13px;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .canvas-wrapper {
+        width: 100%;
+        overflow-x: auto;
+        text-align: center;
+        background: #fafafa;
+        border-radius: 4px;
+        padding: 10px;
+    }
+    .canvas-wrapper canvas {
+        max-width: 100%;
+        height: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-layers me-2"></i>余料优先套料计算器</h2>
+    <span class="text-muted">输入钣金展开外包络尺寸（长×宽）及数量，单位：毫米 (mm)</span>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-white">
+                <i class="bi bi-input-cursor-text me-2"></i>零件清单
+                <span class="badge bg-secondary ms-2">直接输入，无需保存</span>
+            </div>
+            <div class="card-body">
+                <form id="nestingForm">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-5">
+                            <label class="form-label">材料名称 <span class="text-danger">*</span></label>
+                            <div class="search-select-wrapper" id="materialSelectWrapper">
+                                <input type="text" class="search-input" id="materialSearchInput" placeholder="输入关键词搜索材料..." autocomplete="off">
+                                <div class="search-select-dropdown" id="materialDropdown">
+                                    <div class="no-result">加载中...</div>
+                                </div>
+                                <div class="selected-display" id="selectedDisplay">
+                                    <span class="selected-text">已选：<strong id="selectedName">-</strong></span>
+                                    <button type="button" class="btn-clear" id="clearMaterialBtn">✕ 清除</button>
+                                </div>
+                            </div>
+                            <small class="text-muted">输入关键词搜索，点击结果选择材料</small>
+                            <input type="hidden" id="selectedMaterialId" value="">
+                        </div>
+                        <div class="col-md-7">
+                            <div class="material-info" id="materialInfo">
+                                <div class="row g-2">
+                                    <div class="col-md-4"><span class="label">材质：</span><span class="value" id="displayColor">-</span></div>
+                                    <div class="col-md-4"><span class="label">厚度：</span><span class="value" id="displayThickness">-</span></div>
+                                    <div class="col-md-4"><span class="label">板宽：</span><span class="value" id="displayWidth">-</span></div>
+                                </div>
+                                <div class="row g-2 mt-1">
+                                    <div class="col-md-4"><span class="label">板长：</span><span class="value" id="displayLengths">-</span></div>
+                                    <div class="col-md-4"><span class="label">整板库存：</span><span class="value" id="displayStock">-</span></div>
+                                    <div class="col-md-4"><span class="label">余料库存：</span><span class="value" id="displayLeftover">-</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered" id="partTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:20%">零件编号</th>
+                                    <th style="width:25%">长度 (mm)</th>
+                                    <th style="width:25%">宽度 (mm)</th>
+                                    <th style="width:20%">数量 (件)</th>
+                                    <th style="width:10%">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="partTableBody">
+                                <tr>
+                                    <td><input type="text" class="form-control form-control-sm" value="P001" readonly></td>
+                                    <td><input type="number" step="1" class="form-control form-control-sm part-length" placeholder="如 1500" required></td>
+                                    <td><input type="number" step="1" class="form-control form-control-sm part-width" placeholder="如 400" required></td>
+                                    <td><input type="number" step="1" min="1" class="form-control form-control-sm part-qty" value="1" required></td>
+                                    <td><button type="button" class="btn btn-sm btn-outline-danger remove-row"><i class="bi bi-x"></i></button></td>
+                                </tr>
+                                <tr>
+                                    <td><input type="text" class="form-control form-control-sm" value="P002" readonly></td>
+                                    <td><input type="number" step="1" class="form-control form-control-sm part-length" placeholder="如 1000" required></td>
+                                    <td><input type="number" step="1" class="form-control form-control-sm part-width" placeholder="如 300" required></td>
+                                    <td><input type="number" step="1" min="1" class="form-control form-control-sm part-qty" value="1" required></td>
+                                    <td><button type="button" class="btn btn-sm btn-outline-danger remove-row"><i class="bi bi-x"></i></button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="btn btn-outline-primary" id="addRowBtn">
+                            <i class="bi bi-plus-circle me-1"></i>添加零件
+                        </button>
+                        <button type="button" class="btn btn-primary" id="calculateBtn">
+                            <i class="bi bi-calculator me-1"></i>执行套料计算
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="clearBtn">
+                            <i class="bi bi-eraser me-1"></i>清空所有
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 结果区域 -->
+<div class="row mt-4" id="resultRow" style="display:none;">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between">
+                <span><i class="bi bi-file-earmark-text me-2"></i>套料方案 (单位：mm)</span>
+                <button class="btn btn-success" id="confirmBtn" style="display:none;">
+                    <i class="bi bi-check-circle me-1"></i>确认套料
+                </button>
+            </div>
+            <div class="card-body" id="resultArea"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============================================================
+//  搜索选择框
+// ============================================================
+(function() {
+    const searchInput = document.getElementById('materialSearchInput');
+    const dropdown = document.getElementById('materialDropdown');
+    const hiddenId = document.getElementById('selectedMaterialId');
+    const selectedDisplay = document.getElementById('selectedDisplay');
+    const selectedName = document.getElementById('selectedName');
+    const clearBtn = document.getElementById('clearMaterialBtn');
+    let allMaterials = [];
+    let selectedMaterial = null;
+    let isDropdownOpen = false;
+
+    function loadMaterials(keyword = '') {
+        const url = keyword ? `/api/v1/materials/search?keyword=${encodeURIComponent(keyword)}` : '/api/v1/materials/search';
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                allMaterials = data.data || [];
+                renderDropdown(allMaterials);
+                if (!selectedMaterial && allMaterials.length > 0) {
+                    selectMaterial(allMaterials[0]);
+                } else if (allMaterials.length === 0) {
+                    selectedDisplay.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                console.error('材料加载失败:', err);
+                dropdown.innerHTML = '<div class="no-result">加载失败，请刷新重试</div>';
+            });
+    }
+
+    function renderDropdown(materials) {
+        if (!materials || materials.length === 0) {
+            dropdown.innerHTML = '<div class="no-result">未找到匹配的材料</div>';
+            return;
+        }
+        let html = '';
+        materials.forEach(m => {
+            const isSelected = selectedMaterial && selectedMaterial.id === m.id;
+            let lengthDisplay = '';
+            if (m.lengths && m.lengths.length > 0) {
+                if (m.lengths.length === 1) {
+                    lengthDisplay = m.lengths[0];
+                } else {
+                    lengthDisplay = Math.min(...m.lengths) + '-' + Math.max(...m.lengths);
+                }
+            }
+            const spec = lengthDisplay ? `${lengthDisplay}×${m.width}×${m.thickness}` : `${m.width}×${m.thickness}`;
+            let sourceText = '';
+            if (m.has_standard && m.has_leftover) sourceText = '整板+余料';
+            else if (m.has_standard) sourceText = '整板';
+            else if (m.has_leftover) sourceText = '余料';
+            html += `<div class="option-item ${isSelected ? 'selected' : ''}" data-id="${m.id}">
+                <span><strong>${m.color}</strong> ${spec}</span>
+                <span class="source-tag">${sourceText}</span>
+            </div>`;
+        });
+        dropdown.innerHTML = html;
+        dropdown.querySelectorAll('.option-item').forEach(el => {
+            el.addEventListener('click', function() {
+                const id = this.dataset.id;
+                const material = allMaterials.find(m => m.id === id);
+                if (material) {
+                    selectMaterial(material);
+                    closeDropdown();
+                }
+            });
+        });
+    }
+
+    function selectMaterial(material) {
+        selectedMaterial = material;
+        hiddenId.value = material.id;
+        const displayName = material.color || material.name || '未命名';
+        selectedName.textContent = displayName;
+        selectedDisplay.style.display = 'flex';
+        updateMaterialInfo(material);
+        renderDropdown(allMaterials);
+        closeDropdown();
+        searchInput.value = '';
+    }
+
+    function clearSelection() {
+        selectedMaterial = null;
+        hiddenId.value = '';
+        selectedDisplay.style.display = 'none';
+        document.getElementById('displayColor').textContent = '-';
+        document.getElementById('displayThickness').textContent = '-';
+        document.getElementById('displayWidth').textContent = '-';
+        document.getElementById('displayLengths').textContent = '-';
+        document.getElementById('displayStock').textContent = '-';
+        document.getElementById('displayLeftover').textContent = '-';
+        searchInput.value = '';
+        renderDropdown(allMaterials);
+        closeDropdown();
+    }
+
+    function openDropdown() {
+        if (isDropdownOpen) return;
+        isDropdownOpen = true;
+        dropdown.style.display = 'block';
+        const keyword = searchInput.value.trim();
+        if (keyword === '') renderDropdown(allMaterials);
+        else {
+            const filtered = allMaterials.filter(m => 
+                (m.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                (m.name || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                String(m.thickness).includes(keyword) ||
+                String(m.width).includes(keyword)
+            );
+            renderDropdown(filtered);
+        }
+    }
+
+    function closeDropdown() {
+        isDropdownOpen = false;
+        dropdown.style.display = 'none';
+    }
+
+    searchInput.addEventListener('input', function() {
+        const keyword = this.value.trim();
+        if (keyword === '') renderDropdown(allMaterials);
+        else {
+            const filtered = allMaterials.filter(m => 
+                (m.color || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                (m.name || '').toLowerCase().includes(keyword.toLowerCase()) ||
+                String(m.thickness).includes(keyword) ||
+                String(m.width).includes(keyword)
+            );
+            renderDropdown(filtered);
+        }
+        openDropdown();
+    });
+
+    searchInput.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (allMaterials.length === 0) loadMaterials();
+        else openDropdown();
+    });
+
+    document.addEventListener('click', function(e) {
+        const wrapper = document.getElementById('materialSelectWrapper');
+        if (!wrapper.contains(e.target)) closeDropdown();
+    });
+
+    clearBtn.addEventListener('click', clearSelection);
+
+    searchInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.option-item');
+        if (items.length === 0) return;
+        let currentIndex = -1;
+        items.forEach((el, idx) => { if (el.classList.contains('selected')) currentIndex = idx; });
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIdx = (currentIndex + 1) % items.length;
+            items.forEach(el => el.classList.remove('selected'));
+            items[nextIdx].classList.add('selected');
+            items[nextIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIdx = (currentIndex - 1 + items.length) % items.length;
+            items.forEach(el => el.classList.remove('selected'));
+            items[prevIdx].classList.add('selected');
+            items[prevIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const selectedEl = dropdown.querySelector('.option-item.selected');
+            if (selectedEl) selectedEl.click();
+        } else if (e.key === 'Escape') closeDropdown();
+    });
+
+    loadMaterials();
+
+    window.getSelectedMaterialId = function() { return hiddenId.value; };
+    window.getSelectedMaterial = function() { return selectedMaterial; };
+    window.clearMaterialSelection = clearSelection;
+})();
+
+// ============================================================
+//  更新材料属性显示
+// ============================================================
+function updateMaterialInfo(material) {
+    if (!material) {
+        document.getElementById('displayColor').textContent = '-';
+        document.getElementById('displayThickness').textContent = '-';
+        document.getElementById('displayWidth').textContent = '-';
+        document.getElementById('displayLengths').textContent = '-';
+        document.getElementById('displayStock').textContent = '-';
+        document.getElementById('displayLeftover').textContent = '-';
+        return;
+    }
+    document.getElementById('displayColor').textContent = material.color || material.name || '-';
+    document.getElementById('displayThickness').textContent = material.thickness ? material.thickness + ' mm' : '-';
+    document.getElementById('displayWidth').textContent = material.width ? material.width + ' mm' : '-';
+    if (material.lengths && material.lengths.length > 0) {
+        document.getElementById('displayLengths').textContent = material.lengths.map(l => l + 'mm').join('、');
+    } else {
+        document.getElementById('displayLengths').textContent = '暂无整板';
+    }
+    if (material.color) {
+        const url = `/api/v1/inventory/stock?color=${encodeURIComponent(material.color)}&thickness=${material.thickness}`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('displayStock').textContent = data.standard_count + ' 张';
+                document.getElementById('displayLeftover').textContent = data.leftover_count + ' 块';
+            })
+            .catch(() => {
+                document.getElementById('displayStock').textContent = '查询失败';
+                document.getElementById('displayLeftover').textContent = '查询失败';
+            });
+    }
+}
+
+// ============================================================
+//  零件表格操作
+// ============================================================
+let partCounter = 3;
+document.getElementById('addRowBtn').addEventListener('click', function() {
+    const tbody = document.getElementById('partTableBody');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" value="P${String(partCounter).padStart(3, '0')}" readonly></td>
+        <td><input type="number" step="1" class="form-control form-control-sm part-length" placeholder="如 1500" required></td>
+        <td><input type="number" step="1" class="form-control form-control-sm part-width" placeholder="如 400" required></td>
+        <td><input type="number" step="1" min="1" class="form-control form-control-sm part-qty" value="1" required></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger remove-row"><i class="bi bi-x"></i></button></td>
+    `;
+    tbody.appendChild(row);
+    partCounter++;
+});
+
+document.getElementById('partTableBody').addEventListener('click', function(e) {
+    if (e.target.closest('.remove-row')) {
+        const rows = this.querySelectorAll('tr');
+        if (rows.length > 1) {
+            e.target.closest('tr').remove();
+        } else {
+            alert('至少保留一行');
+        }
+    }
+});
+
+document.getElementById('clearBtn').addEventListener('click', function() {
+    const tbody = document.getElementById('partTableBody');
+    tbody.innerHTML = '';
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" value="P001" readonly></td>
+        <td><input type="number" step="1" class="form-control form-control-sm part-length" placeholder="如 1500" required></td>
+        <td><input type="number" step="1" class="form-control form-control-sm part-width" placeholder="如 400" required></td>
+        <td><input type="number" step="1" min="1" class="form-control form-control-sm part-qty" value="1" required></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger remove-row"><i class="bi bi-x"></i></button></td>
+    `;
+    tbody.appendChild(row);
+    partCounter = 2;
+});
+
+// ============================================================
+//  执行套料计算
+// ============================================================
+document.getElementById('calculateBtn').addEventListener('click', function() {
+    const materialId = window.getSelectedMaterialId();
+    if (!materialId) {
+        alert('请先选择一种材料！');
+        return;
+    }
+    const material = window.getSelectedMaterial();
+    const color = material ? material.color : materialId;
+
+    const rows = document.querySelectorAll('#partTableBody tr');
+    const parts = [];
+    let hasError = false;
+    rows.forEach(row => {
+        const lengthInput = row.querySelector('.part-length');
+        const widthInput = row.querySelector('.part-width');
+        const qtyInput = row.querySelector('.part-qty');
+        const idInput = row.querySelector('input[readonly]');
+        const length = parseInt(lengthInput.value);
+        const width = parseInt(widthInput.value);
+        const qty = parseInt(qtyInput.value) || 1;
+        if (!length || !width || length <= 0 || width <= 0) {
+            hasError = true;
+            if (lengthInput) lengthInput.style.borderColor = 'red';
+            if (widthInput) widthInput.style.borderColor = 'red';
+            return;
+        }
+        for (let i = 0; i < qty; i++) {
+            parts.push({
+                part_id: idInput ? idInput.value : 'P',
+                length: length,
+                width: width
+            });
+        }
+    });
+    if (hasError || parts.length === 0) {
+        alert('请正确填写所有零件尺寸（大于0）');
+        return;
+    }
+
+    fetch('/api/v1/nesting/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts, color: color })
+    })
+    .then(res => {
+        if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '计算失败'); });
+        return res.json();
+    })
+    .then(data => {
+        window.currentScheme = data;
+        document.getElementById('resultRow').style.display = 'block';
+        let html = `
+            <div class="alert alert-success">
+                <h5><i class="bi bi-check-circle me-2"></i>套料方案</h5>
+                <p>共使用 <strong>${data.total_plates}</strong> 张板（含 ${data.summary.total_leftover_used} 块余料）</p>
+            </div>
+            <div class="accordion" id="accordionPlates">
+        `;
+        data.bins.forEach((bin, idx) => {
+            const binType = bin.type === 'leftover' ? '余料' : '整板';
+            const idText = bin.type === 'leftover' ? ` (ID: ${bin.leftover_id})` : '';
+            const rotatedText = bin.rotated ? ' (旋转90°)' : '';
+            const remainLen = bin.length - bin.used_length;
+            const totalWidth = bin.layers.reduce((sum, l) => sum + l.width, 0);
+            const remainWidth = bin.width - totalWidth;
+            const newLeftovers = bin.new_leftovers || [];
+            const newLeftoverText = newLeftovers.map(l => `${l.length}×${l.width}`).join('、') || '无';
+
+            const canvasId = `canvas-${idx}`;
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading${idx}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${idx}" aria-expanded="false" aria-controls="collapse${idx}">
+                            <strong>${binType} ${idx+1}</strong> (${bin.length}×${bin.width})${idText}${rotatedText} - 占用长度 ${bin.used_length}mm，剩余长度 ${remainLen}mm，剩余宽度 ${remainWidth}mm
+                        </button>
+                    </h2>
+                    <div id="collapse${idx}" class="accordion-collapse collapse" aria-labelledby="heading${idx}" data-bs-parent="#accordionPlates">
+                        <div class="accordion-body">
+                            <div class="canvas-wrapper">
+                                <canvas id="${canvasId}"></canvas>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-4"><strong>消耗余料：</strong> ${bin.type === 'leftover' ? bin.leftover_id : '无'}</div>
+                                <div class="col-md-4"><strong>新产生余料：</strong> ${newLeftoverText}</div>
+                                <div class="col-md-4"><strong>零件明细：</strong> ${bin.layers.map(l => l.items.map(i => `${i.part_id}(${i.length}×${i.width})`).join('+')).join(' | ')}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div>
+            <div class="row mt-3">
+                <div class="col-md-4"><strong>整板消耗：</strong> ${data.summary.total_standard_used} 张</div>
+                <div class="col-md-4"><strong>余料消耗：</strong> ${data.summary.total_leftover_used} 块</div>
+                <div class="col-md-4"><strong>新余料：</strong> ${data.summary.new_leftover_generated.length} 块 (${data.summary.new_leftover_generated.map(l => `${l.length}×${l.width}`).join('、')})</div>
+            </div>
+        `;
+        document.getElementById('resultArea').innerHTML = html;
+        document.getElementById('confirmBtn').style.display = 'inline-block';
+        document.getElementById('resultRow').scrollIntoView({ behavior: 'smooth' });
+
+        // 绘制 Canvas（延迟确保DOM渲染完成）
+        setTimeout(() => {
+            data.bins.forEach((bin, idx) => {
+                drawLayout(`canvas-${idx}`, bin);
+            });
+        }, 200);
+    })
+    .catch(err => {
+        alert('计算失败: ' + err.message);
+    });
+});
+
+// ============================================================
+//  绘制 Canvas 二维排样图（修复版）
+// ============================================================
+function drawLayout(canvasId, bin) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    
+    // 检查数据有效性
+    if (!bin.layout || bin.layout.length === 0) {
+        const wrapper = canvas.parentElement;
+        if (wrapper) {
+            wrapper.innerHTML = '<div class="text-muted" style="padding:20px;">无零件数据</div>';
+        }
+        return;
+    }
+    if (bin.length <= 0 || bin.width <= 0) {
+        const wrapper = canvas.parentElement;
+        if (wrapper) {
+            wrapper.innerHTML = '<div class="text-muted" style="padding:20px;">板尺寸异常</div>';
+        }
+        return;
+    }
+    
+    // 获取容器宽度
+    const wrapper = canvas.parentElement;
+    const containerWidth = wrapper ? wrapper.clientWidth - 20 : 600;
+    if (containerWidth < 50) {
+        // 如果容器宽度太小，等一会再试
+        setTimeout(() => drawLayout(canvasId, bin), 300);
+        return;
+    }
+    
+    // 计算缩放
+    const maxHeight = 320;
+    const scaleX = containerWidth / bin.length;
+    const scaleY = maxHeight / bin.width;
+    const scale = Math.min(scaleX, scaleY, 2.0);
+    
+    const cw = Math.max(bin.length * scale, 100);
+    const ch = Math.max(bin.width * scale, 50);
+    
+    canvas.width = cw;
+    canvas.height = ch;
+    canvas.style.width = cw + 'px';
+    canvas.style.height = ch + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#f8f9fa';
+    ctx.fillRect(0, 0, cw, ch);
+    
+    // 画板边框
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, cw, ch);
+    
+    // 标注尺寸
+    ctx.fillStyle = '#666';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${bin.length}mm`, cw/2, 14);
+    ctx.save();
+    ctx.translate(14, ch/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText(`${bin.width}mm`, 0, 0);
+    ctx.restore();
+
+    // 颜色生成
+    const colors = {};
+    function getColor(id) {
+        if (!colors[id]) {
+            const hash = parseInt(id.slice(-3), 36) || 0;
+            const hue = (hash * 137 + 180) % 360;
+            colors[id] = `hsl(${hue}, 70%, 70%)`;
+        }
+        return colors[id];
+    }
+
+    bin.layout.forEach(rect => {
+        const x = rect.x * scale;
+        const y = rect.y * scale;
+        const w = rect.w * scale;
+        const h = rect.h * scale;
+        
+        if (w < 1 || h < 1) return;
+        
+        // 填充
+        ctx.fillStyle = getColor(rect.part_id);
+        ctx.fillRect(x, y, w, h);
+        
+        // 边框
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
+        
+        // 零件编号
+        const fontSize = Math.min(w, h) / 3.5;
+        ctx.fillStyle = '#000';
+        ctx.font = `${Math.max(fontSize, 9)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(rect.part_id, x + w/2, y + h/2 - 5);
+        
+        // 尺寸
+        ctx.font = `${Math.max(fontSize * 0.55, 7)}px sans-serif`;
+        ctx.fillStyle = '#222';
+        ctx.fillText(`${rect.w}×${rect.h}`, x + w/2, y + h/2 + 14);
+        
+        // 旋转标记
+        if (rect.rotated) {
+            ctx.fillStyle = 'red';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.fillText('↻', x + w - 14, y + 12);
+        }
+    });
+}
+
+// ============================================================
+//  确认套料
+// ============================================================
+document.getElementById('confirmBtn').addEventListener('click', function() {
+    if (!window.currentScheme) {
+        alert('没有可确认的方案');
+        return;
+    }
+    const material = window.getSelectedMaterial();
+    if (!material) {
+        alert('请先选择材料');
+        return;
+    }
+    const schemeToConfirm = {
+        ...window.currentScheme,
+        color: material.color
+    };
+    if (!confirm('确认此套料方案？将扣减库存并生成余料。')) return;
+    fetch('/api/v1/nesting/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(schemeToConfirm)
+    })
+    .then(res => {
+        if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '确认失败'); });
+        return res.json();
+    })
+    .then(data => {
+        alert('套料方案已确认！库存已更新。');
+        location.reload();
+    })
+    .catch(err => alert('确认失败: ' + err.message));
+});
+</script>
+{% endblock %}

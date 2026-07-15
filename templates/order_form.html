@@ -1,0 +1,908 @@
+{% extends "base.html" %}
+
+{% block title %}{{ '编辑' if order else '新建' }}订单{% endblock %}
+
+{% block extra_css %}
+<style>
+    .summary-card { background: #f8f9fa; border-radius: 8px; padding: 12px; }
+    .summary-card .label { color: #6c757d; font-size: 13px; }
+    .summary-card .value { font-size: 18px; font-weight: 600; color: #0d6efd; }
+    .summary-card .value.tax { color: #198754; }
+    .summary-card .value.exclude { color: #0d6efd; }
+    .part-row input, .part-row select { font-size: 13px; }
+    .process-row input, .process-row select { font-size: 13px; }
+    .table thead th { font-size: 13px; white-space: nowrap; }
+    .table tbody td { vertical-align: middle; }
+    .total-row { font-weight: 600; background: #e9ecef; }
+    .drop-zone { transition: all 0.3s; }
+    .drop-zone.dragover { border-color: #0d6efd !important; background: #e9ecef !important; }
+    .file-item:hover { background: #f8f9fa; }
+    .price-display { font-weight: 600; color: #0d6efd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-receipt me-2"></i>{{ '编辑' if order else '新建' }}订单</h2>
+    <span class="text-muted">订单编号：{{ order.order_no if order else '自动生成' }}</span>
+</div>
+
+<form id="orderForm" enctype="multipart/form-data">
+    <!-- ==================== 基本信息 ==================== -->
+    <div class="card mb-3">
+        <div class="card-header bg-white"><i class="bi bi-info-circle me-2"></i>基本信息</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">客户名称</label>
+                    <input type="text" class="form-control" id="customerName" value="{{ order.customer_name or '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">联系电话</label>
+                    <input type="text" class="form-control" id="customerPhone" value="{{ order.customer_phone or '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">运输方式</label>
+                    <select class="form-select" id="transportMethod">
+                        <option value="自提" {% if order and order.transport_method == '自提' %}selected{% endif %}>自提</option>
+                        <option value="物流配送" {% if order and order.transport_method == '物流配送' %}selected{% endif %}>物流配送</option>
+                        <option value="快递" {% if order and order.transport_method == '快递' %}selected{% endif %}>快递</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">送货地址</label>
+                    <input type="text" class="form-control" id="deliveryAddress" value="{{ order.delivery_address or '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">备注</label>
+                    <input type="text" class="form-control" id="notes" value="{{ order.notes or '' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 财务设置 ==================== -->
+    <div class="card mb-3">
+        <div class="card-header bg-white"><i class="bi bi-currency-dollar me-2"></i>财务设置</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">当前税率</label>
+                    <div class="form-control" style="background:#e9ecef; font-weight:600; color:#0d6efd; font-size:18px;" id="taxRateDisplay">
+                        {{ (order.tax_rate|default(0.13) * 100)|int }}%
+                    </div>
+                    <small class="text-muted">税率由财务模块统一管理</small>
+                </div>
+                <div class="col-md-8 d-flex align-items-center">
+                    <div class="text-muted small">提示：材料单价和工艺单价由财务模块统一管理，选择材料/工艺自动带出</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 零件清单 ==================== -->
+    <div class="card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between">
+            <span><i class="bi bi-grid-3x3-gap-fill me-2"></i>零件清单</span>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addPartBtn">
+                <i class="bi bi-plus-circle me-1"></i>添加零件
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="partTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:10%">零件编号</th>
+                            <th style="width:12%">长度(mm)</th>
+                            <th style="width:12%">宽度(mm)</th>
+                            <th style="width:8%">数量</th>
+                            <th style="width:25%">材料</th>
+                            <th style="width:10%">面积(㎡)</th>
+                            <th style="width:12%">单价(元/㎡)</th>
+                            <th style="width:12%">材料费(元)</th>
+                            <th style="width:9%">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="partTableBody">
+                        {% if order and order.parts %}
+                            {% for item in order.parts %}
+                            <tr class="part-row">
+                                <td><input type="text" class="form-control form-control-sm" value="{{ item.part_id }}" data-field="part_id"></td>
+                                <td><input type="number" class="form-control form-control-sm part-length" value="{{ item.length }}" data-field="length"></td>
+                                <td><input type="number" class="form-control form-control-sm part-width" value="{{ item.width }}" data-field="width"></td>
+                                <td><input type="number" class="form-control form-control-sm part-qty" value="{{ item.quantity }}" data-field="quantity" min="1"></td>
+                                <td>
+                                    <select class="form-select form-select-sm material-select" data-field="material">
+                                        <option value="{{ item.material or '' }}" selected>{{ item.material or '请选择材料' }}</option>
+                                    </select>
+                                </td>
+                                <td><input type="text" class="form-control form-control-sm part-area" value="{{ item.area or 0 }}" readonly style="background:#e9ecef;"></td>
+                                <td><input type="text" class="form-control form-control-sm part-price" value="{{ item.unit_price or 0 }}" readonly style="background:#e9ecef;"></td>
+                                <td><input type="text" class="form-control form-control-sm part-total" value="{{ item.total_price or 0 }}" readonly style="background:#e9ecef;"></td>
+                                <td><button type="button" class="btn btn-sm btn-outline-danger remove-part"><i class="bi bi-x"></i></button></td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr class="part-row">
+                                <td><input type="text" class="form-control form-control-sm" value="P001" data-field="part_id"></td>
+                                <td><input type="number" class="form-control form-control-sm part-length" placeholder="如 1500" data-field="length"></td>
+                                <td><input type="number" class="form-control form-control-sm part-width" placeholder="如 400" data-field="width"></td>
+                                <td><input type="number" class="form-control form-control-sm part-qty" value="1" data-field="quantity" min="1"></td>
+                                <td>
+                                    <select class="form-select form-select-sm material-select" data-field="material">
+                                        <option value="">请选择材料</option>
+                                    </select>
+                                </td>
+                                <td><input type="text" class="form-control form-control-sm part-area" value="0" readonly style="background:#e9ecef;"></td>
+                                <td><input type="text" class="form-control form-control-sm part-price" value="0" readonly style="background:#e9ecef;"></td>
+                                <td><input type="text" class="form-control form-control-sm part-total" value="0" readonly style="background:#e9ecef;"></td>
+                                <td><button type="button" class="btn btn-sm btn-outline-danger remove-part"><i class="bi bi-x"></i></button></td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td colspan="5" class="text-end"><strong>材料合计</strong></td>
+                            <td><strong id="partAreaTotal">0.0000</strong></td>
+                            <td></td>
+                            <td><strong id="partPriceTotal">0.00</strong></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 工艺汇总 ==================== -->
+    <div class="card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between">
+            <span><i class="bi bi-tools me-2"></i>工艺汇总</span>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addProcessBtn">
+                <i class="bi bi-plus-circle me-1"></i>添加工艺
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="processTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:20%">加工工艺</th>
+                            <th style="width:15%">加工量</th>
+                            <th style="width:10%">单位</th>
+                            <th style="width:18%">单价(元)</th>
+                            <th style="width:18%">工艺费(元)</th>
+                            <th style="width:19%">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="processTableBody">
+                        {% if order and order.processes %}
+                            {% for proc in order.processes %}
+                            <tr class="process-row">
+                                <td>
+                                    <select class="form-select form-select-sm process-select" data-field="process">
+                                        <option value="激光切割" {% if proc.process == '激光切割' %}selected{% endif %}>激光切割</option>
+                                        <option value="焊接" {% if proc.process == '焊接' %}selected{% endif %}>焊接</option>
+                                        <option value="打磨" {% if proc.process == '打磨' %}selected{% endif %}>打磨</option>
+                                        <option value="刨槽" {% if proc.process == '刨槽' %}selected{% endif %}>刨槽</option>
+                                        <option value="折弯" {% if proc.process == '折弯' %}selected{% endif %}>折弯</option>
+                                        <option value="冲压" {% if proc.process == '冲压' %}selected{% endif %}>冲压</option>
+                                        <option value="表面处理" {% if proc.process == '表面处理' %}selected{% endif %}>表面处理</option>
+                                        <option value="组装" {% if proc.process == '组装' %}selected{% endif %}>组装</option>
+                                        <option value="其他" {% if proc.process == '其他' %}selected{% endif %}>其他</option>
+                                    </select>
+                                </td>
+                                <td><input type="number" step="0.01" class="form-control form-control-sm process-qty" value="{{ proc.quantity }}" data-field="quantity"></td>
+                                <td>
+                                    <select class="form-select form-select-sm unit-select" data-field="unit">
+                                        <option value="米" {% if proc.unit == '米' %}selected{% endif %}>米</option>
+                                        <option value="件" {% if proc.unit == '件' %}selected{% endif %}>件</option>
+                                        <option value="刀" {% if proc.unit == '刀' %}selected{% endif %}>刀</option>
+                                        <option value="㎡" {% if proc.unit == '㎡' %}selected{% endif %}>㎡</option>
+                                    </select>
+                                </td>
+                                <td><input type="text" class="form-control form-control-sm process-price" value="{{ proc.unit_price }}" readonly style="background:#e9ecef;"></td>
+                                <td><input type="text" class="form-control form-control-sm process-total" value="{{ proc.total_price }}" readonly style="background:#e9ecef;"></td>
+                                <td><button type="button" class="btn btn-sm btn-outline-danger remove-process"><i class="bi bi-x"></i></button></td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr class="process-row">
+                                <td>
+                                    <select class="form-select form-select-sm process-select" data-field="process">
+                                        <option value="激光切割">激光切割</option>
+                                        <option value="焊接">焊接</option>
+                                        <option value="打磨">打磨</option>
+                                        <option value="刨槽">刨槽</option>
+                                        <option value="折弯">折弯</option>
+                                        <option value="冲压">冲压</option>
+                                        <option value="表面处理">表面处理</option>
+                                        <option value="组装">组装</option>
+                                        <option value="其他">其他</option>
+                                    </select>
+                                </td>
+                                <td><input type="number" step="0.01" class="form-control form-control-sm process-qty" value="0" data-field="quantity"></td>
+                                <td>
+                                    <select class="form-select form-select-sm unit-select" data-field="unit">
+                                        <option value="米">米</option>
+                                        <option value="件">件</option>
+                                        <option value="刀">刀</option>
+                                        <option value="㎡">㎡</option>
+                                    </select>
+                                </td>
+                                <td><input type="text" class="form-control form-control-sm process-price" value="0" readonly style="background:#e9ecef;"></td>
+                                <td><input type="text" class="form-control form-control-sm process-total" value="0" readonly style="background:#e9ecef;"></td>
+                                <td><button type="button" class="btn btn-sm btn-outline-danger remove-process"><i class="bi bi-x"></i></button></td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td colspan="3" class="text-end"><strong>工艺合计</strong></td>
+                            <td></td>
+                            <td><strong id="processTotal">0.00</strong></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 附件上传 ==================== -->
+    <div class="card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between">
+            <span><i class="bi bi-paperclip me-2"></i>附件（图纸、草图等）</span>
+            <span class="badge bg-secondary" id="fileCount">0 个文件</span>
+        </div>
+        <div class="card-body">
+            <div class="drop-zone" id="dropZone"
+                 style="border: 2px dashed #ced4da; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s;">
+                <i class="bi bi-cloud-upload fs-1 d-block mb-2" style="color: #6c757d;"></i>
+                <p class="text-muted mb-0">拖拽文件到此处，或点击选择文件</p>
+                <small class="text-muted">支持 PDF、DWG、DXF、JPG、PNG 等格式</small>
+            </div>
+            <input type="file" id="fileInput" style="display:none;" multiple accept=".pdf,.dwg,.dxf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt">
+            <div id="fileList" class="mt-3"></div>
+        </div>
+    </div>
+
+    <!-- ==================== 订单总计 ==================== -->
+    <div class="card mb-3">
+        <div class="card-header bg-white"><i class="bi bi-calculator me-2"></i>订单总计</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="summary-card">
+                        <div class="label">材料费</div>
+                        <div class="value" id="totalMaterial">0.00</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-card">
+                        <div class="label">工艺费</div>
+                        <div class="value" id="totalProcess">0.00</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-card">
+                        <div class="label">不含税总价</div>
+                        <div class="value exclude" id="totalExcludeTax">0.00</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-card">
+                        <div class="label">含税总价 (税率 <span id="taxRateDisplay2">13</span>%)</div>
+                        <div class="value tax" id="totalIncludeTax">0.00</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary" id="submitBtn">
+            <i class="bi bi-save me-1"></i>保存订单
+        </button>
+        <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='/orders'">取消</button>
+    </div>
+</form>
+
+<!-- ============================================================ -->
+<!-- JavaScript -->
+<!-- ============================================================ -->
+<script>
+// ============================================================
+//  全局变量（从财务模块加载）
+// ============================================================
+let materialPrices = {};
+let processPrices = {};
+let taxRate = 0.13;
+let selectedFiles = [];
+
+// ============================================================
+//  加载财务数据
+// ============================================================
+
+function loadTaxRate() {
+    {% if order %}
+        taxRate = {{ order.tax_rate|default(0.13) }};
+    {% else %}
+        taxRate = 0.13;
+    {% endif %}
+    document.getElementById('taxRateDisplay').textContent = (taxRate * 100).toFixed(1) + '%';
+    document.getElementById('taxRateDisplay2').textContent = (taxRate * 100).toFixed(1);
+    calcOrderTotal();
+}
+
+// 【关键修复】加载材料价格
+function loadMaterialPrices() {
+    fetch('/api/finance/material-prices')
+        .then(res => {
+            if (!res.ok) throw new Error('加载材料价格失败');
+            return res.json();
+        })
+        .then(data => {
+            // 转换为 {材料名称: 价格} 格式
+            materialPrices = {};
+            if (data && Array.isArray(data)) {
+                data.forEach(item => {
+                    materialPrices[item.material_name] = item.price || 0;
+                });
+            }
+            console.log('材料价格已加载:', materialPrices);
+            
+            // 更新所有零件行的价格
+            document.querySelectorAll('.part-row').forEach(row => {
+                const select = row.querySelector('[data-field="material"]');
+                if (select && select.value) {
+                    calcPartRow(row);
+                }
+            });
+            calcPartTotal();
+            calcOrderTotal();
+        })
+        .catch(err => {
+            console.error('加载材料价格失败:', err);
+            // 使用默认价格（至少不报错）
+            materialPrices = {};
+        });
+}
+
+// 【关键修复】加载工艺价格
+function loadProcessPrices() {
+    fetch('/api/finance/process-prices')
+        .then(res => {
+            if (!res.ok) throw new Error('加载工艺价格失败');
+            return res.json();
+        })
+        .then(data => {
+            // 转换为 {工艺_单位: 价格} 格式
+            processPrices = {};
+            if (data && Array.isArray(data)) {
+                data.forEach(item => {
+                    const key = `${item.process}_${item.unit}`;
+                    processPrices[key] = item.price || 0;
+                });
+            }
+            console.log('工艺价格已加载:', processPrices);
+            
+            // 更新所有工艺行
+            document.querySelectorAll('.process-row').forEach(row => {
+                calcProcessRow(row);
+            });
+            calcProcessTotal();
+            calcOrderTotal();
+        })
+        .catch(err => {
+            console.error('加载工艺价格失败:', err);
+            processPrices = {};
+        });
+}
+
+// ============================================================
+//  零件操作
+// ============================================================
+let partCounter = 100;
+
+// 加载材料下拉列表
+function loadMaterialsForSelect(selectElement) {
+    fetch('/api/v1/materials/search')
+        .then(res => res.json())
+        .then(data => {
+            const currentVal = selectElement.value;
+            let options = '<option value="">请选择材料</option>';
+            if (data.data && data.data.length > 0) {
+                data.data.forEach(m => {
+                    // 从 materialPrices 获取价格
+                    const price = materialPrices[m.color] || 0;
+                    let sourceLabel = '';
+                    if (m.standard_qty > 0 && m.leftover_qty > 0) {
+                        sourceLabel = '🟦整板+🟩余料';
+                    } else if (m.standard_qty > 0) {
+                        sourceLabel = '🟦整板';
+                    } else if (m.leftover_qty > 0) {
+                        sourceLabel = '🟩余料';
+                    }
+                    options += `<option value="${m.color}" data-price="${price}" ${m.color === currentVal ? 'selected' : ''}>${m.color} ${sourceLabel}</option>`;
+                });
+            } else {
+                options += '<option value="" disabled>暂无可用材料，请先入库</option>';
+            }
+            selectElement.innerHTML = options;
+            if (currentVal) {
+                selectElement.value = currentVal;
+                selectElement.dispatchEvent(new Event('change'));
+            }
+        })
+        .catch(err => console.error('加载材料失败:', err));
+}
+
+function calcPartRow(row) {
+    const length = parseFloat(row.querySelector('[data-field="length"]')?.value) || 0;
+    const width = parseFloat(row.querySelector('[data-field="width"]')?.value) || 0;
+    const qty = parseInt(row.querySelector('[data-field="quantity"]')?.value) || 0;
+    const material = row.querySelector('[data-field="material"]')?.value || '';
+    
+    // 计算面积
+    const area = (length * width * qty) / 1000000;
+    row.querySelector('.part-area').value = area.toFixed(4);
+    
+    // 【关键】从 materialPrices 获取单价
+    const price = materialPrices[material] || 0;
+    row.querySelector('.part-price').value = price.toFixed(2);
+    
+    // 计算材料费
+    const total = area * price;
+    row.querySelector('.part-total').value = total.toFixed(2);
+    return { area, total };
+}
+
+function calcPartTotal() {
+    const rows = document.querySelectorAll('#partTableBody tr');
+    let totalArea = 0, totalPrice = 0;
+    rows.forEach(row => {
+        const { area, total } = calcPartRow(row);
+        totalArea += area;
+        totalPrice += total;
+    });
+    document.getElementById('partAreaTotal').textContent = totalArea.toFixed(4);
+    document.getElementById('partPriceTotal').textContent = totalPrice.toFixed(2);
+    return { totalArea, totalPrice };
+}
+
+function bindPartEvents(row) {
+    const inputs = row.querySelectorAll('[data-field="length"], [data-field="width"], [data-field="quantity"]');
+    inputs.forEach(input => {
+        input.addEventListener('input', function() {
+            calcPartRow(row);
+            calcPartTotal();
+            calcOrderTotal();
+        });
+        input.addEventListener('change', function() {
+            calcPartRow(row);
+            calcPartTotal();
+            calcOrderTotal();
+        });
+    });
+    const materialSelect = row.querySelector('[data-field="material"]');
+    if (materialSelect) {
+        materialSelect.addEventListener('change', function() {
+            calcPartRow(row);
+            calcPartTotal();
+            calcOrderTotal();
+        });
+    }
+}
+
+document.getElementById('addPartBtn').addEventListener('click', function() {
+    const tbody = document.getElementById('partTableBody');
+    const row = document.createElement('tr');
+    row.className = 'part-row';
+    row.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" value="P${String(partCounter).padStart(3, '0')}" data-field="part_id"></td>
+        <td><input type="number" class="form-control form-control-sm part-length" placeholder="如 1500" data-field="length"></td>
+        <td><input type="number" class="form-control form-control-sm part-width" placeholder="如 400" data-field="width"></td>
+        <td><input type="number" class="form-control form-control-sm part-qty" value="1" data-field="quantity" min="1"></td>
+        <td>
+            <select class="form-select form-select-sm material-select" data-field="material">
+                <option value="">请选择材料</option>
+            </select>
+        </td>
+        <td><input type="text" class="form-control form-control-sm part-area" value="0" readonly style="background:#e9ecef;"></td>
+        <td><input type="text" class="form-control form-control-sm part-price" value="0" readonly style="background:#e9ecef;"></td>
+        <td><input type="text" class="form-control form-control-sm part-total" value="0" readonly style="background:#e9ecef;"></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger remove-part"><i class="bi bi-x"></i></button></td>
+    `;
+    tbody.appendChild(row);
+    loadMaterialsForSelect(row.querySelector('.material-select'));
+    bindPartEvents(row);
+    calcPartRow(row);
+    calcPartTotal();
+    calcOrderTotal();
+    partCounter++;
+});
+
+document.getElementById('partTableBody').addEventListener('click', function(e) {
+    if (e.target.closest('.remove-part')) {
+        const rows = this.querySelectorAll('tr');
+        if (rows.length > 1) {
+            e.target.closest('tr').remove();
+            calcPartTotal();
+            calcOrderTotal();
+        } else {
+            alert('至少保留一行零件');
+        }
+    }
+});
+
+// ============================================================
+//  工艺操作
+// ============================================================
+
+function calcProcessRow(row) {
+    const qty = parseFloat(row.querySelector('[data-field="quantity"]')?.value) || 0;
+    const process = row.querySelector('[data-field="process"]')?.value || '激光切割';
+    const unit = row.querySelector('[data-field="unit"]')?.value || '米';
+    const key = `${process}_${unit}`;
+    // 【关键】从 processPrices 获取单价
+    const price = processPrices[key] || 0;
+    const total = qty * price;
+    row.querySelector('.process-price').value = price.toFixed(2);
+    row.querySelector('.process-total').value = total.toFixed(2);
+    return total;
+}
+
+function calcProcessTotal() {
+    const rows = document.querySelectorAll('#processTableBody tr');
+    let total = 0;
+    rows.forEach(row => { total += calcProcessRow(row); });
+    document.getElementById('processTotal').textContent = total.toFixed(2);
+    return total;
+}
+
+function bindProcessEvents(row) {
+    const inputs = row.querySelectorAll('[data-field="quantity"]');
+    inputs.forEach(input => {
+        input.addEventListener('input', function() {
+            calcProcessRow(row);
+            calcProcessTotal();
+            calcOrderTotal();
+        });
+        input.addEventListener('change', function() {
+            calcProcessRow(row);
+            calcProcessTotal();
+            calcOrderTotal();
+        });
+    });
+    const processSelect = row.querySelector('[data-field="process"]');
+    const unitSelect = row.querySelector('[data-field="unit"]');
+    if (processSelect) {
+        processSelect.addEventListener('change', function() {
+            calcProcessRow(row);
+            calcProcessTotal();
+            calcOrderTotal();
+        });
+    }
+    if (unitSelect) {
+        unitSelect.addEventListener('change', function() {
+            calcProcessRow(row);
+            calcProcessTotal();
+            calcOrderTotal();
+        });
+    }
+}
+
+document.getElementById('addProcessBtn').addEventListener('click', function() {
+    const tbody = document.getElementById('processTableBody');
+    const row = document.createElement('tr');
+    row.className = 'process-row';
+    row.innerHTML = `
+        <td>
+            <select class="form-select form-select-sm process-select" data-field="process">
+                <option value="激光切割">激光切割</option>
+                <option value="焊接">焊接</option>
+                <option value="打磨">打磨</option>
+                <option value="刨槽">刨槽</option>
+                <option value="折弯">折弯</option>
+                <option value="冲压">冲压</option>
+                <option value="表面处理">表面处理</option>
+                <option value="组装">组装</option>
+                <option value="其他">其他</option>
+            </select>
+        </td>
+        <td><input type="number" step="0.01" class="form-control form-control-sm process-qty" value="0" data-field="quantity"></td>
+        <td>
+            <select class="form-select form-select-sm unit-select" data-field="unit">
+                <option value="米">米</option>
+                <option value="件">件</option>
+                <option value="刀">刀</option>
+                <option value="㎡">㎡</option>
+            </select>
+        </td>
+        <td><input type="text" class="form-control form-control-sm process-price" value="0" readonly style="background:#e9ecef;"></td>
+        <td><input type="text" class="form-control form-control-sm process-total" value="0" readonly style="background:#e9ecef;"></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger remove-process"><i class="bi bi-x"></i></button></td>
+    `;
+    tbody.appendChild(row);
+    bindProcessEvents(row);
+    calcProcessRow(row);
+    calcProcessTotal();
+    calcOrderTotal();
+});
+
+document.getElementById('processTableBody').addEventListener('click', function(e) {
+    if (e.target.closest('.remove-process')) {
+        const rows = this.querySelectorAll('tr');
+        if (rows.length > 1) {
+            e.target.closest('tr').remove();
+            calcProcessTotal();
+            calcOrderTotal();
+        } else {
+            alert('至少保留一行工艺');
+        }
+    }
+});
+
+// ============================================================
+//  订单总计
+// ============================================================
+function calcOrderTotal() {
+    const materialTotal = parseFloat(document.getElementById('partPriceTotal').textContent) || 0;
+    const processTotal = parseFloat(document.getElementById('processTotal').textContent) || 0;
+    const subtotal = materialTotal + processTotal;
+    const taxAmount = subtotal * taxRate;
+    const totalIncludeTax = subtotal + taxAmount;
+    
+    document.getElementById('totalMaterial').textContent = materialTotal.toFixed(2);
+    document.getElementById('totalProcess').textContent = processTotal.toFixed(2);
+    document.getElementById('totalExcludeTax').textContent = subtotal.toFixed(2);
+    document.getElementById('totalIncludeTax').textContent = totalIncludeTax.toFixed(2);
+    document.getElementById('taxRateDisplay2').textContent = (taxRate * 100).toFixed(1);
+    return { subtotal, totalIncludeTax };
+}
+
+// ============================================================
+//  附件管理
+// ============================================================
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const icons = {
+        'pdf': 'bi-filetype-pdf',
+        'doc': 'bi-filetype-doc', 'docx': 'bi-filetype-docx',
+        'xls': 'bi-filetype-xls', 'xlsx': 'bi-filetype-xlsx',
+        'jpg': 'bi-filetype-jpg', 'jpeg': 'bi-filetype-jpg',
+        'png': 'bi-filetype-png', 'gif': 'bi-filetype-gif',
+        'dwg': 'bi-filetype-dwg', 'dxf': 'bi-filetype-dxf',
+        'zip': 'bi-filetype-zip', 'rar': 'bi-filetype-rar',
+        'txt': 'bi-filetype-txt'
+    };
+    return icons[ext] || 'bi-file-earmark';
+}
+
+function renderFileList() {
+    const container = document.getElementById('fileList');
+    const count = document.getElementById('fileCount');
+    if (selectedFiles.length === 0) {
+        container.innerHTML = '';
+        count.textContent = '0 个文件';
+        return;
+    }
+    let html = '<div class="list-group">';
+    selectedFiles.forEach((file, index) => {
+        const size = (file.size / 1024).toFixed(1) + ' KB';
+        const icon = getFileIcon(file.name);
+        html += `
+            <div class="list-group-item file-item d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi ${icon} me-2"></i>
+                    <span>${file.name}</span>
+                    <span class="badge bg-secondary ms-2">${size}</span>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger remove-file" data-index="${index}">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    count.textContent = selectedFiles.length + ' 个文件';
+    
+    container.querySelectorAll('.remove-file').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const idx = parseInt(this.dataset.index);
+            selectedFiles.splice(idx, 1);
+            renderFileList();
+            document.getElementById('fileInput').value = '';
+        });
+    });
+}
+
+// 附件上传事件
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', function() { fileInput.click(); });
+
+dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('dragover');
+});
+
+dropZone.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+});
+
+dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    for (let file of files) {
+        if (!selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+            selectedFiles.push(file);
+        }
+    }
+    renderFileList();
+});
+
+fileInput.addEventListener('change', function() {
+    const files = this.files;
+    for (let file of files) {
+        if (!selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+            selectedFiles.push(file);
+        }
+    }
+    renderFileList();
+    this.value = '';
+});
+
+// ============================================================
+//  保存订单
+// ============================================================
+document.getElementById('orderForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
+    
+    const customer_name = document.getElementById('customerName').value.trim();
+    const customer_phone = document.getElementById('customerPhone').value.trim();
+    const notes = document.getElementById('notes').value.trim();
+    const transport_method = document.getElementById('transportMethod').value;
+    const delivery_address = document.getElementById('deliveryAddress').value.trim();
+    
+    // 收集零件
+    const partRows = document.querySelectorAll('#partTableBody tr');
+    const items = [];
+    let hasError = false;
+    partRows.forEach(row => {
+        const getVal = (field) => row.querySelector(`[data-field="${field}"]`)?.value || '';
+        const part_id = getVal('part_id').trim();
+        const length = parseFloat(getVal('length'));
+        const width = parseFloat(getVal('width'));
+        const quantity = parseInt(getVal('quantity')) || 1;
+        const material = row.querySelector('[data-field="material"]')?.value || '';
+        if (!part_id || !length || !width || length <= 0 || width <= 0) {
+            hasError = true;
+            return;
+        }
+        if (!material) {
+            hasError = true;
+            return;
+        }
+        const area = (length * width * quantity) / 1000000;
+        const unit_price = materialPrices[material] || 0;
+        const total_price = area * unit_price;
+        items.push({ part_id, length, width, quantity, material, area, unit_price, total_price });
+    });
+    if (hasError || items.length === 0) {
+        alert('请正确填写所有零件（尺寸>0，并选择材料）');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>保存订单';
+        return;
+    }
+    
+    // 收集工艺
+    const processRows = document.querySelectorAll('#processTableBody tr');
+    const processes = [];
+    processRows.forEach(row => {
+        const process = row.querySelector('[data-field="process"]')?.value || '激光切割';
+        const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value) || 0;
+        const unit = row.querySelector('[data-field="unit"]')?.value || '米';
+        if (quantity <= 0) {
+            hasError = true;
+            return;
+        }
+        const key = `${process}_${unit}`;
+        const unit_price = processPrices[key] || 0;
+        const total_price = quantity * unit_price;
+        processes.push({ process, quantity, unit, unit_price, total_price });
+    });
+    if (hasError || processes.length === 0) {
+        alert('请正确填写工艺信息（加工量>0）');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>保存订单';
+        return;
+    }
+    
+    const isEdit = {{ 1 if order else 0 }};
+    const orderId = {{ order.id if order else 0 }};
+    const url = isEdit ? `/api/orders/${orderId}` : '/api/orders';
+    const method = isEdit ? 'PUT' : 'POST';
+    const data = { 
+        customer_name, customer_phone, notes, 
+        tax_rate: taxRate,
+        tax_included: true,
+        transport_method, delivery_address,
+        items, processes
+    };
+    
+    fetch(url, { 
+        method, 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(data) 
+    })
+    .then(res => {
+        if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '保存失败'); });
+        return res.json();
+    })
+    .then(orderData => {
+        if (selectedFiles.length > 0) {
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            return fetch(`/api/orders/${orderData.id}/attachments/batch`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => {
+                if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '附件上传失败'); });
+                return res.json();
+            })
+            .then(() => orderData);
+        }
+        return orderData;
+    })
+    .then(orderData => {
+        window.location.href = `/orders/${orderData.id}`;
+    })
+    .catch(err => {
+        alert('操作失败: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>保存订单';
+    });
+});
+
+// ============================================================
+//  初始化
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    loadTaxRate();
+    loadMaterialPrices();
+    loadProcessPrices();
+    
+    document.querySelectorAll('.material-select').forEach(el => loadMaterialsForSelect(el));
+    
+    document.querySelectorAll('#partTableBody tr').forEach(row => {
+        bindPartEvents(row);
+        calcPartRow(row);
+    });
+    
+    document.querySelectorAll('#processTableBody tr').forEach(row => {
+        bindProcessEvents(row);
+        calcProcessRow(row);
+    });
+    
+    setTimeout(() => {
+        calcPartTotal();
+        calcProcessTotal();
+        calcOrderTotal();
+    }, 300);
+});
+</script>
+{% endblock %}

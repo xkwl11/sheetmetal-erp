@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}零件管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-grid-3x3-gap-fill me-2"></i>零件清单</h2>
+    <span class="text-muted">模拟数据，用于套料测试</span>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white">
+        <i class="bi bi-list-ul me-2"></i>零件列表
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>零件编号</th>
+                        <th>展开长度 (米)</th>
+                        <th>展开宽度 (米)</th>
+                        <th>材质</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for part in parts %}
+                    <tr>
+                        <td><strong>{{ part.part_id }}</strong></td>
+                        <td>{{ part.length }}</td>
+                        <td>{{ part.width }}</td>
+                        <td>{{ part.color }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="alert('删除功能开发中')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header bg-white">
+        <i class="bi bi-plus-circle me-2"></i>添加新零件
+    </div>
+    <div class="card-body">
+        <form method="post" action="/parts/add" class="row g-3">
+            <div class="col-md-3">
+                <input type="text" class="form-control" name="part_id" placeholder="零件编号" required>
+            </div>
+            <div class="col-md-3">
+                <input type="number" step="0.01" class="form-control" name="length" placeholder="长度 (米)" required>
+            </div>
+            <div class="col-md-3">
+                <input type="number" step="0.01" class="form-control" name="width" placeholder="宽度 (米)" required>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" name="color">
+                    <option value="镀锌板">镀锌板</option>
+                    <option value="不锈钢">不锈钢</option>
+                    <option value="冷轧板">冷轧板</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
